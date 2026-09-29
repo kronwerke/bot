@@ -1,0 +1,54 @@
+# A release is what the running bot installs by itself (see docs/DEPLOY.md). Start
+# one by pushing a tag v*, or from the Actions tab with a version. The release is
+# published only after the binary and SHA256SUMS are attached, so the bot never
+# sees a half finished one.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, like v0.2.0. The tag is made from the chosen branch."
+        required: true
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: version
+        run: |
+          echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "not a version: $VERSION" >&2; exit 1; }
+          grep -q "^## ${VERSION#v}\$" CHANGELOG.md || { echo "CHANGELOG.md has no section ## ${VERSION#v}" >&2; exit 1; }
+
+      - run: sh tools/check.sh
+
+      - name: build
+        run: |
+          mkdir dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.version=$VERSION" \
+            -o dist/kronwerke-bot-linux-amd64 ./cmd/kronwerke-bot
+          test "$(dist/kronwerke-bot-linux-amd64 version)" = "$VERSION"
+          cp deploy/install.sh deploy/rollback-guard.sh deploy/kronwerke-bot.service deploy/config.example.env dist/
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: notes
+        run: awk -v h="## ${VERSION#v}" '$0 == h { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md > notes.md
+
+      - name: publish
+        run: gh release create "$VERSION" dist/* --target "$GITHUB_SHA" --title "$VERSION" --notes-file notes.md
