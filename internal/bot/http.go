@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// serveHTTP answers health checks and Prometheus on a loopback address.
+// serveHTTP answers health checks and Prometheus on a loopback address, and takes the
+// Minecraft server's link.
 func (b *Bot) serveHTTP(ctx context.Context) {
 	if b.cfg.HTTPAddr == "" {
 		return
@@ -44,6 +45,9 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 		metric("kronwerke_bot_invites_total", "Whitelist slots given since start.", "counter", b.stats.invites.Load())
 		metric("kronwerke_bot_errors_total", "Errors since start.", "counter", b.stats.errors.Load())
 	})
+	// the Minecraft server's launcher; the reverse proxy passes only this path and /api
+	mux.Handle("GET /link", b.link)
+	mux.HandleFunc("GET /api/status", b.apiStatus)
 	srv := &http.Server{Addr: b.cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -54,4 +58,32 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		b.log.Error("http", "err", err)
 	}
+}
+
+// apiStatus is the public state of the server for the website: online, players, goals.
+func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
+	b.statusMu.Lock()
+	p := b.lastPing
+	b.statusMu.Unlock()
+	b.apiMu.Lock()
+	goals, goalsAt := b.goals, b.goalsAt
+	b.apiMu.Unlock()
+
+	server := map[string]any{"online": false}
+	if !p.at.IsZero() && p.err == nil {
+		server = map[string]any{"online": true, "players": p.status.Online, "max": p.status.Max,
+			"names": p.status.Players, "version": p.status.Version, "checked": p.at.UTC()}
+	}
+	if i, ok := b.link.Connected(); ok {
+		server["state"] = i.State
+		server["pack"] = i.Pack
+	}
+	out := map[string]any{"server": server}
+	if goals != nil && time.Since(goalsAt) < 10*time.Minute {
+		out["goals"] = goals
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "public, max-age=30")
+	json.NewEncoder(w).Encode(out)
 }

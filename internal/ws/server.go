@@ -9,10 +9,11 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
-// ServerConn is the server side of a connection. It exists so the gateway client can
-// be tested against a fake gateway; the bot itself never accepts connections.
+// ServerConn is the server side of a connection: the Minecraft server's link, and the
+// fake gateway in tests.
 type ServerConn struct {
 	c  net.Conn
 	br *bufio.Reader
@@ -86,26 +87,52 @@ func (s *ServerConn) frame(op int, p []byte, fin bool) error {
 	return err
 }
 
-// Read returns the next message from the client, unmasked. Pongs are skipped.
+// Read returns the next message from the client, unmasked. Pings are answered, pongs
+// skipped, fragmented messages assembled.
 func (s *ServerConn) Read() (op int, msg []byte, err error) {
 	c := &Conn{c: s.c, br: s.br}
+	var buf []byte
+	first := -1
 	for {
-		fin, op, payload, err := c.readFrame()
+		fin, fop, payload, err := c.readFrame()
 		if err != nil {
 			return 0, nil, err
 		}
-		if op == opPong {
+		switch fop {
+		case opPong:
 			continue
+		case opPing:
+			if err := s.frame(opPong, payload, true); err != nil {
+				return 0, nil, err
+			}
+			continue
+		case opClose:
+			return fop, payload, io.EOF
+		case opContinuation:
+			if first < 0 {
+				return 0, nil, errors.New("ws: continuation without a start")
+			}
+		default:
+			if first >= 0 {
+				return 0, nil, errors.New("ws: new message inside a fragmented one")
+			}
+			first = fop
 		}
-		if op == opClose {
-			return op, payload, io.EOF
+		buf = append(buf, payload...)
+		if len(buf) > MaxMessage {
+			return 0, nil, errors.New("ws: message too large")
 		}
-		if !fin {
-			return 0, nil, errors.New("ws: test server does not assemble client fragments")
+		if fin {
+			return first, buf, nil
 		}
-		return op, payload, nil
 	}
 }
+
+// SetReadDeadline limits how long the next Read may wait.
+func (s *ServerConn) SetReadDeadline(t time.Time) error { return s.c.SetReadDeadline(t) }
+
+// RemoteAddr is the peer's address.
+func (s *ServerConn) RemoteAddr() string { return s.c.RemoteAddr().String() }
 
 // Close drops the connection without a close frame.
 func (s *ServerConn) Close() error { return s.c.Close() }

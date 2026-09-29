@@ -40,7 +40,7 @@ var defaults = map[string]string{
 	"captcha.lock":      "10m",
 	"applications.keep": "48h",
 	"verify.autorole":   "on", // give new members the unverified role on join
-	"s1.slots":          "2",  // own slots for Season 1 players who join with /dabei
+	"s1.slots":          "2",  // own slots for Season 1 players, given with /link
 }
 
 // setting returns the override from the store or the default.

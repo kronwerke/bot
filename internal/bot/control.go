@@ -24,8 +24,11 @@ const controlHelp = "**Befehle im Kontrollkanal**\n" +
 	"`!verify-panel` Verifizierungs-Nachricht neu posten\n" +
 	"`!apply-panel <kanal-id>` Bewerben-Knopf in einen Kanal posten\n" +
 	"`!apps` Bewerbungen\n" +
-	"`!invites` Whitelist-Plätze und Season-1-Plätze\n" +
-	"`!rcon <befehl>` Befehl auf dem Minecraft-Server"
+	"`!invites` vergebene Plätze und eigene Plätze\n" +
+	"`!sync` eigene Plätze für Streamer und Season-1-Spieler nachtragen\n" +
+	"`!rcon <befehl>` Befehl auf dem Minecraft-Server\n" +
+	"`!link` Verbindung zum Server-Launcher, `!link accept <fingerprint>`\n" +
+	"`!mc status|start|stop|restart [update]|cmd|console|logs|ls|cat` den Server steuern"
 
 func (b *Bot) onMessage(ctx context.Context, m discord.Message) {
 	if m.GuildID != "" && m.GuildID != b.guild() {
@@ -48,7 +51,7 @@ func (b *Bot) onMessage(ctx context.Context, m discord.Message) {
 		return
 	}
 	b.events.add("control %q by %s", firstLine(m.Content), m.Author.Username)
-	out := b.runControl(ctx, strings.TrimSpace(m.Content))
+	out := b.runControl(ctx, strings.TrimSpace(m.Content), m.Author.Username)
 	if out != "" {
 		b.control(ctx, out)
 	}
@@ -64,7 +67,7 @@ func firstLine(s string) string {
 	return s
 }
 
-func (b *Bot) runControl(ctx context.Context, line string) string {
+func (b *Bot) runControl(ctx context.Context, line, by string) string {
 	cmd, rest, _ := strings.Cut(line, " ")
 	rest = strings.TrimSpace(rest)
 	switch cmd {
@@ -158,24 +161,34 @@ func (b *Bot) runControl(ctx context.Context, line string) string {
 		}
 		var lines []string
 		for _, g := range grants {
-			lines = append(lines, fmt.Sprintf("%s (<@%s>) Season 1", g.Player, g.DiscordID))
+			lines = append(lines, fmt.Sprintf("%s (<@%s>) %s", g.Player, g.DiscordID, g.Label()))
 		}
 		for _, v := range invs {
 			lines = append(lines, fmt.Sprintf("%s (<@%s>) von <@%s>", v.Player, v.DiscordID, v.StreamerID))
 		}
 		return strings.Join(lines, "\n")
-	case "!rcon":
-		if b.rcon == nil {
-			return "RCON ist nicht konfiguriert (KW_RCON_ADDR)."
-		}
-		out, err := b.rcon.Command(rest)
+	case "!sync":
+		out, err := b.syncPlaces(ctx)
 		if err != nil {
-			return "RCON-Fehler: " + err.Error()
+			return "Nachtragen ging nicht: " + err.Error()
+		}
+		return out
+	case "!rcon":
+		if !b.serverConnected() {
+			return "Kein Minecraft-Server verbunden (Launcher oder KW_RCON_ADDR)."
+		}
+		out, err := b.console(rest)
+		if err != nil {
+			return "Fehler: " + err.Error()
 		}
 		if out == "" {
 			out = "(keine Ausgabe)"
 		}
-		return "```\n" + out + "\n```"
+		return fence(out)
+	case "!link":
+		return b.linkControl(ctx, rest, by)
+	case "!mc":
+		return b.mcControl(ctx, rest)
 	}
 	return "Unbekannter Befehl. `!help` zeigt alle."
 }
@@ -199,7 +212,7 @@ func (b *Bot) statusText() string {
 	lines = append(lines,
 		fmt.Sprintf("**%s**, läuft seit %s, Gateway %s, %d Reconnects", b.cfg.Version, up, gw, b.reconnects()),
 		fmt.Sprintf("Speicher %d MiB, Goroutinen %d", ms.Alloc>>20, runtime.NumGoroutine()),
-		fmt.Sprintf("Verifiziert %d (seit Start %d, falsch %d), Bewerbungen %d, Whitelist %d plus %d Season 1, Befehle %d, Fehler %d",
+		fmt.Sprintf("Verifiziert %d (seit Start %d, falsch %d), Bewerbungen %d, Whitelist %d plus %d eigene Plätze, Befehle %d, Fehler %d",
 			b.store.VerifiedCount(), b.stats.verified.Load(), b.stats.failed.Load(), b.stats.applications.Load(),
 			len(b.store.InvitesBy("")), len(b.store.Grants()), b.stats.commands.Load(), b.stats.errors.Load()),
 	)
@@ -226,6 +239,11 @@ func (b *Bot) statusText() string {
 		lines = append(lines, fmt.Sprintf("Minecraft: offline (%v)", p.err))
 	case !p.at.IsZero():
 		lines = append(lines, fmt.Sprintf("Minecraft: online, %d/%d Spieler, %s, %d ms", p.status.Online, p.status.Max, p.status.Version, p.status.LatencyMS))
+	}
+	if i, ok := b.link.Connected(); ok {
+		lines = append(lines, fmt.Sprintf("Launcher: %s verbunden, %s, Pack %s", i.Name, stateWord(i.State), i.Pack))
+	} else {
+		lines = append(lines, "Launcher: nicht verbunden")
 	}
 	if b.rcon == nil {
 		lines = append(lines, "RCON: nicht konfiguriert")

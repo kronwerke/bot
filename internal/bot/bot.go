@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kronwerke/bot/internal/discord"
+	"github.com/kronwerke/bot/internal/link"
 	"github.com/kronwerke/bot/internal/rcon"
 	"github.com/kronwerke/bot/internal/store"
 	"github.com/kronwerke/bot/internal/update"
@@ -45,6 +46,7 @@ type Bot struct {
 	gw      atomic.Pointer[discord.Gateway]
 	store   *store.Store
 	rcon    *rcon.Client
+	link    *link.Hub
 	started time.Time
 
 	me      discord.User
@@ -59,6 +61,10 @@ type Bot struct {
 	lastPing  pingResult
 	updateMu  sync.Mutex
 	lastCheck checkResult
+
+	apiMu   sync.Mutex
+	goals   json.RawMessage // the last "kw admin goals json", for the API
+	goalsAt time.Time
 }
 
 type stats struct {
@@ -92,6 +98,7 @@ func New(cfg Config, log *slog.Logger) (*Bot, error) {
 	if cfg.RCONAddr != "" {
 		b.rcon = &rcon.Client{Addr: cfg.RCONAddr, Password: cfg.RCONPassword}
 	}
+	b.link = b.newHub()
 	return b, nil
 }
 

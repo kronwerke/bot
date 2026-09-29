@@ -13,18 +13,11 @@ func ptr[T any](v T) *T { return &v }
 func commands() []discord.ApplicationCommand {
 	return []discord.ApplicationCommand{
 		{
-			Name: "bewerben", Description: "Als Streamer für Kronwerke bewerben",
+			Name: "apply", Description: "Als Streamer für Kronwerke bewerben",
 			DMPermission: ptr(false),
 		},
 		{
-			Name: "link", Description: "Deinen Minecraft-Namen hinterlegen",
-			DMPermission: ptr(false),
-			Options: []discord.ApplicationCommandOption{
-				{Type: discord.OptString, Name: "name", Description: "Dein Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
-			},
-		},
-		{
-			Name: "dabei", Description: "Season 1 gespielt? Dann bist du ohne Streamer-Platz dabei",
+			Name: "link", Description: "Deinen Minecraft-Namen hinterlegen (Streamer und Season-1-Spieler kommen damit auf die Whitelist)",
 			DMPermission: ptr(false),
 			Options: []discord.ApplicationCommandOption{
 				{Type: discord.OptString, Name: "name", Description: "Dein Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
@@ -35,11 +28,11 @@ func commands() []discord.ApplicationCommand {
 			DMPermission: ptr(false),
 			Options: []discord.ApplicationCommandOption{
 				{Type: discord.OptSubCommand, Name: "add", Description: "Jemanden auf die Whitelist setzen", Options: []discord.ApplicationCommandOption{
-					{Type: discord.OptString, Name: "spieler", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
-					{Type: discord.OptUser, Name: "nutzer", Description: "Die Person auf dem Discord", Required: true},
+					{Type: discord.OptString, Name: "player", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
+					{Type: discord.OptUser, Name: "user", Description: "Die Person auf dem Discord", Required: true},
 				}},
 				{Type: discord.OptSubCommand, Name: "remove", Description: "Jemanden von der Whitelist nehmen", Options: []discord.ApplicationCommandOption{
-					{Type: discord.OptString, Name: "spieler", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
+					{Type: discord.OptString, Name: "player", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
 				}},
 				{Type: discord.OptSubCommand, Name: "list", Description: "Wen du eingetragen hast"},
 			},
@@ -63,12 +56,10 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 	case discord.InteractionCommand:
 		b.events.add("/%s by %s", i.Data.Name, i.Actor().Username)
 		switch i.Data.Name {
-		case "bewerben":
+		case "apply":
 			b.openApplication(ctx, i)
 		case "link":
 			b.linkMinecraft(ctx, i)
-		case "dabei":
-			b.joinSeason1(ctx, i)
 		case "whitelist":
 			if len(i.Data.Options) == 0 {
 				return

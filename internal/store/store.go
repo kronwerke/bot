@@ -30,12 +30,27 @@ type Application struct {
 	DecidedBy string    `json:"decided_by,omitempty"`
 }
 
-// Grant is a place on the whitelist the team gave without a streamer's slot
-// (Season 1 players). The player also gets slots of their own.
+// Grant is a place of one's own on the whitelist, not taken from anyone's slots:
+// streamers themselves and Season 1 players. They also get slots to give away.
 type Grant struct {
 	Player    string    `json:"player"` // Minecraft name
 	DiscordID string    `json:"discord_id"`
+	Kind      string    `json:"kind,omitempty"` // KindStreamer or KindSeason1; empty is Season 1
 	Created   time.Time `json:"created"`
+}
+
+// Kinds of grants.
+const (
+	KindStreamer = "streamer"
+	KindSeason1  = "season1"
+)
+
+// Label is how the control channel shows the kind.
+func (g Grant) Label() string {
+	if g.Kind == KindStreamer {
+		return "Streamer"
+	}
+	return "Season 1"
 }
 
 // Invite is a whitelist slot given by a streamer to a player.
@@ -44,6 +59,14 @@ type Invite struct {
 	DiscordID  string    `json:"discord_id"`
 	StreamerID string    `json:"streamer_id"` // Discord id of the streamer
 	Created    time.Time `json:"created"`
+}
+
+// LinkKey is a Minecraft server launcher the team accepted. Only a hash of its key is kept.
+type LinkKey struct {
+	Hash     string    `json:"hash"`
+	Name     string    `json:"name"`
+	Accepted time.Time `json:"accepted"`
+	By       string    `json:"by"`
 }
 
 type data struct {
@@ -55,7 +78,8 @@ type data struct {
 	Links        map[string]string      `json:"links"`   // discord id -> minecraft name
 	Invites      map[string]Invite      `json:"invites"` // lower case minecraft name -> invite
 	Verified     map[string]time.Time   `json:"verified"`
-	Grants       map[string]Grant       `json:"grants"` // discord id -> grant
+	Grants       map[string]Grant       `json:"grants"`    // discord id -> grant
+	LinkKeys     map[string]LinkKey     `json:"link_keys"` // fingerprint -> key
 }
 
 // Store is safe for concurrent use.
@@ -109,6 +133,9 @@ func (s *Store) init() {
 	}
 	if s.d.Grants == nil {
 		s.d.Grants = map[string]Grant{}
+	}
+	if s.d.LinkKeys == nil {
+		s.d.LinkKeys = map[string]LinkKey{}
 	}
 }
 
@@ -351,6 +378,41 @@ func (s *Store) Grants() (out []Grant) {
 	})
 	sort.Slice(out, func(a, b int) bool { return out[a].Player < out[b].Player })
 	return
+}
+
+// ---- link keys ----
+
+// LinkKey returns the stored hash for a fingerprint (link.Keys).
+func (s *Store) LinkKey(fp string) (hash string, ok bool) {
+	s.view(func(d *data) {
+		var k LinkKey
+		k, ok = d.LinkKeys[fp]
+		hash = k.Hash
+	})
+	return
+}
+
+func (s *Store) PutLinkKey(fp string, k LinkKey) error {
+	return s.update(func(d *data) { d.LinkKeys[fp] = k })
+}
+
+func (s *Store) DeleteLinkKey(fp string) (ok bool, err error) {
+	err = s.update(func(d *data) {
+		_, ok = d.LinkKeys[fp]
+		delete(d.LinkKeys, fp)
+	})
+	return
+}
+
+// LinkKeys returns the accepted launchers by fingerprint.
+func (s *Store) LinkKeys() map[string]LinkKey {
+	out := map[string]LinkKey{}
+	s.view(func(d *data) {
+		for k, v := range d.LinkKeys {
+			out[k] = v
+		}
+	})
+	return out
 }
 
 func lower(s string) string {

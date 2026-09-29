@@ -135,7 +135,14 @@ func (b *Bot) decideApplication(ctx context.Context, i *discord.Interaction, use
 			return
 		}
 		a.Status = "accepted"
-		text = fmt.Sprintf("✅ <@%s>, du bist dabei! %s hat deine Bewerbung angenommen. Als Nächstes: `/link` mit deinem Minecraft-Namen, dann kannst du mit `/whitelist add` deine Leute eintragen.", userID, who.Name())
+		text = fmt.Sprintf("✅ <@%s>, du bist dabei! %s hat deine Bewerbung angenommen. Als Nächstes: `/link` mit deinem Minecraft-Namen, damit kommst du auf die Whitelist. Dann trägst du mit `/whitelist add` deine Leute ein.", userID, who.Name())
+		if name := b.store.Link(userID); name != "" {
+			if _, has := b.store.Grant(userID); !has {
+				if m, err := b.rest.Member(ctx, b.guild(), userID); err == nil && m.User != nil && b.grant(ctx, *m.User, name, store.KindStreamer, -1) == nil {
+					text = fmt.Sprintf("✅ <@%s>, du bist dabei! %s hat deine Bewerbung angenommen. **%s** ist auf der Whitelist, und mit `/whitelist add` trägst du deine Leute ein.", userID, who.Name(), name)
+				}
+			}
+		}
 	} else {
 		a.Status = "declined"
 		text = fmt.Sprintf("<@%s>, diesmal hat es leider nicht gepasst. Danke fürs Bewerben, und du bist als Zuschauer jederzeit willkommen.", userID)

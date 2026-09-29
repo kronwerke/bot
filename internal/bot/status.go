@@ -111,15 +111,24 @@ type goalView struct {
 	} `json:"top"`
 }
 
-// postProgress keeps a live board of the active community goal, when a channel is set.
+// postProgress fetches the goals for the API and keeps a live board of the active
+// community goal, when a channel is set.
 func (b *Bot) postProgress(ctx context.Context) {
-	ch := b.setting("channel.progress")
-	if ch == "" || b.rcon == nil || !b.ready.Load() {
+	if !b.serverConnected() {
 		return
 	}
 	out, err := b.serverCommand("kw admin goals json")
 	if err != nil {
 		b.events.add("progress: %v", err)
+		return
+	}
+	if json.Valid([]byte(out)) {
+		b.apiMu.Lock()
+		b.goals, b.goalsAt = json.RawMessage(out), time.Now()
+		b.apiMu.Unlock()
+	}
+	ch := b.setting("channel.progress")
+	if ch == "" || !b.ready.Load() {
 		return
 	}
 	var goals []goalView
