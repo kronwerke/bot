@@ -204,7 +204,7 @@ func TestStartRegistersCommandsAndPostsVerifyPanel(t *testing.T) {
 	c := f.waitFor(t, "slash commands", func(c call) bool {
 		return c.Method == "PUT" && c.Path == "/applications/"+appID+"/guilds/"+guildID+"/commands"
 	})
-	for _, name := range []string{"bewerben", "whitelist", "link"} {
+	for _, name := range []string{"apply", "whitelist", "link"} {
 		if !strings.Contains(c.Body, `"name":"`+name+`"`) {
 			t.Errorf("command %s not registered", name)
 		}
@@ -295,7 +295,7 @@ func TestApplicationCreatesPrivateChannelAndTeamCanAccept(t *testing.T) {
 	b, f := startBot(t)
 	mem := defaults["role.member"]
 	f.send("INTERACTION_CREATE", map[string]any{"id": "2001", "token": "t2001", "type": 2, "guild_id": guildID,
-		"application_id": appID, "member": member(mem), "data": map[string]any{"name": "bewerben"}})
+		"application_id": appID, "member": member(mem), "data": map[string]any{"name": "apply"}})
 	c := f.waitFor(t, "application modal", func(c call) bool { return c.Path == "/interactions/2001/t2001/callback" })
 	if !strings.Contains(c.Body, `"type":9`) || !strings.Contains(c.Body, idApplyModal) {
 		t.Fatalf("expected a modal, got %s", c.Body)
@@ -349,8 +349,8 @@ func TestWhitelistWithoutServerSaysSoAndChangesNothing(t *testing.T) {
 	f.send("INTERACTION_CREATE", map[string]any{"id": "3001", "token": "t3001", "type": 2, "guild_id": guildID, "application_id": appID,
 		"member": member(defaults["role.member"], defaults["role.streamer"]),
 		"data": map[string]any{"name": "whitelist", "options": []any{map[string]any{"name": "add", "type": 1, "options": []any{
-			map[string]any{"name": "spieler", "type": 3, "value": "Ben_MC"},
-			map[string]any{"name": "nutzer", "type": 6, "value": "800000000000000002"},
+			map[string]any{"name": "player", "type": 3, "value": "Ben_MC"},
+			map[string]any{"name": "user", "type": 6, "value": "800000000000000002"},
 		}}}, "resolved": map[string]any{"members": map[string]any{"800000000000000002": map[string]any{"roles": []string{defaults["role.member"]}}}}}})
 	f.waitFor(t, "no server message", func(c call) bool {
 		return c.Method == "PATCH" && strings.Contains(c.Path, "t3001") && strings.Contains(c.Body, "noch nicht")
@@ -437,7 +437,7 @@ func (f *fakeRCON) commands() []string {
 	return append([]string(nil), f.cmds...)
 }
 
-func TestSeason1PlayerJoinsInvitesAndLosesEverythingWhenLeaving(t *testing.T) {
+func TestLinkGivesStreamersAndSeason1PlayersAPlaceAndLeavingTakesItBack(t *testing.T) {
 	rc := newFakeRCON(t)
 	f := newFakeDiscord(t)
 	b, err := New(Config{
@@ -453,31 +453,44 @@ func TestSeason1PlayerJoinsInvitesAndLosesEverythingWhenLeaving(t *testing.T) {
 	f.waitFor(t, "online", func(c call) bool { return strings.Contains(c.Body, "Online") })
 
 	mem, s1 := defaults["role.member"], defaults["role.season1"]
-	// without the Season 1 role: refused
-	f.send("INTERACTION_CREATE", map[string]any{"id": "4001", "token": "t4001", "type": 2, "guild_id": guildID, "application_id": appID,
-		"member": member(mem), "data": map[string]any{"name": "dabei", "options": []any{map[string]any{"name": "name", "type": 3, "value": "Anna_MC"}}}})
-	f.waitFor(t, "refusal", func(c call) bool {
-		return strings.Contains(c.Path, "/interactions/4001/") && strings.Contains(c.Body, "Season 1 gespielt")
+	link := func(id string, m map[string]any, name string) {
+		f.send("INTERACTION_CREATE", map[string]any{"id": id, "token": "t" + id, "type": 2, "guild_id": guildID, "application_id": appID,
+			"member": m, "data": map[string]any{"name": "link", "options": []any{map[string]any{"name": "name", "type": 3, "value": name}}}})
+	}
+	// without a role: the name is stored, no place
+	link("4001", member(mem), "Anna_MC")
+	f.waitFor(t, "name stored", func(c call) bool {
+		return strings.Contains(c.Path, "/interactions/4001/") && strings.Contains(c.Body, "wenn dir ein Streamer")
 	})
+	if _, ok := b.store.Grant(userID); ok {
+		t.Fatal("a place without the Season 1 or streamer role")
+	}
 
-	f.send("INTERACTION_CREATE", map[string]any{"id": "4002", "token": "t4002", "type": 2, "guild_id": guildID, "application_id": appID,
-		"member": member(mem, s1), "data": map[string]any{"name": "dabei", "options": []any{map[string]any{"name": "name", "type": 3, "value": "Anna_MC"}}}})
+	// with the Season 1 role: a place and two slots
+	link("4002", member(mem, s1), "Anna_MC")
 	f.waitFor(t, "welcome back", func(c call) bool {
 		return c.Method == "PATCH" && strings.Contains(c.Path, "t4002") && strings.Contains(c.Body, "Willkommen zur")
 	})
 	f.waitFor(t, "Spieler role", func(c call) bool {
 		return c.Method == "PUT" && c.Path == "/guilds/"+guildID+"/members/"+userID+"/roles/"+defaults["role.player"]
 	})
-	if g, ok := b.store.Grant(userID); !ok || g.Player != "Anna_MC" {
+	if g, ok := b.store.Grant(userID); !ok || g.Player != "Anna_MC" || g.Kind != "season1" {
 		t.Fatalf("grant not stored: %+v", g)
 	}
+
+	// a streamer: a place with Core's default slots
+	streamer := map[string]any{"user": map[string]any{"id": "800000000000000009", "username": "carla"}, "roles": []string{mem, defaults["role.streamer"], s1}}
+	link("4004", streamer, "CarlaLive")
+	f.waitFor(t, "streamer place", func(c call) bool {
+		return c.Method == "PATCH" && strings.Contains(c.Path, "t4004") && strings.Contains(c.Body, "CarlaLive** ist auf der Whitelist")
+	})
 
 	// the Season 1 player gives one of her slots
 	f.send("INTERACTION_CREATE", map[string]any{"id": "4003", "token": "t4003", "type": 2, "guild_id": guildID, "application_id": appID,
 		"member": member(mem, s1),
 		"data": map[string]any{"name": "whitelist", "options": []any{map[string]any{"name": "add", "type": 1, "options": []any{
-			map[string]any{"name": "spieler", "type": 3, "value": "Ben_MC"},
-			map[string]any{"name": "nutzer", "type": 6, "value": "800000000000000002"},
+			map[string]any{"name": "player", "type": 3, "value": "Ben_MC"},
+			map[string]any{"name": "user", "type": 6, "value": "800000000000000002"},
 		}}}, "resolved": map[string]any{"members": map[string]any{"800000000000000002": map[string]any{"roles": []string{mem}}}}}})
 	f.waitFor(t, "invite done", func(c call) bool {
 		return c.Method == "PATCH" && strings.Contains(c.Path, "t4003") && strings.Contains(c.Body, "Ben_MC")
@@ -492,8 +505,14 @@ func TestSeason1PlayerJoinsInvitesAndLosesEverythingWhenLeaving(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	want := []string{"kw admin grant Anna_MC 2", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
-	if got := rc.commands(); strings.Join(got, "|") != strings.Join(want, "|") {
+	want := []string{"kw admin grant Anna_MC 2", "kw admin grant CarlaLive", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
+	var got []string
+	for _, c := range rc.commands() {
+		if c != "kw admin goals json" { // the status loop fetches goals for the API
+			got = append(got, c)
+		}
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("server commands\n got %q\nwant %q", got, want)
 	}
 	if _, ok := b.store.Grant(userID); ok {
@@ -502,4 +521,87 @@ func TestSeason1PlayerJoinsInvitesAndLosesEverythingWhenLeaving(t *testing.T) {
 	if _, ok := b.store.Invite("Ben_MC"); ok {
 		t.Fatal("invite still stored after the inviter left")
 	}
+}
+
+// fakeLauncher is the launcher's side of the link, answering every command with "OK <cmd>".
+func fakeLauncher(t *testing.T, addr, key string) *ws.Conn {
+	t.Helper()
+	var c *ws.Conn
+	var err error
+	for i := 0; i < 50; i++ {
+		c, err = ws.Dial(context.Background(), "ws://"+addr+"/link", nil)
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(map[string]any{"type": "hello", "key": key, "name": "tavuru", "launcher": "0.1.0", "state": "running", "pack": "0.4.0"})
+	c.WriteText(b)
+	return c
+}
+
+func TestLauncherLinkIsAcceptedInTheControlChannelAndCarriesCommands(t *testing.T) {
+	f := newFakeDiscord(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	b, err := New(Config{
+		Token: "tok", StatePath: filepath.Join(t.TempDir(), "state.json"),
+		Version: "v0.0.0-test", APIBase: f.rest.URL, HTTPAddr: addr,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go b.Run(ctx)
+	f.waitFor(t, "online", func(c call) bool { return strings.Contains(c.Body, "Online") })
+	ctl := defaults["channel.control"]
+	control := func(content string) {
+		f.send("MESSAGE_CREATE", map[string]any{"id": f.id(), "channel_id": ctl, "guild_id": guildID, "content": content,
+			"author": map[string]any{"id": botID, "username": "Kronwerke"}})
+	}
+
+	const key = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+	c := fakeLauncher(t, addr, key)
+	fp := b.linkFingerprint(key)
+	f.waitFor(t, "pending notice", func(c call) bool {
+		return c.Path == "/channels/"+ctl+"/messages" && strings.Contains(c.Body, "!link accept "+fp)
+	})
+	control("!link accept " + fp)
+	f.waitFor(t, "accepted", func(c call) bool { return strings.Contains(c.Body, "verbindet sich gleich neu") })
+	c.Close(1000)
+
+	c = fakeLauncher(t, addr, key)
+	defer c.Close(1000)
+	go func() {
+		for {
+			_, raw, err := c.Read()
+			if err != nil {
+				return
+			}
+			var m map[string]any
+			json.Unmarshal(raw, &m)
+			if m["type"] != "req" {
+				continue
+			}
+			args, _ := m["args"].(map[string]any)
+			out, _ := json.Marshal(map[string]any{"type": "res", "id": m["id"], "ok": true, "data": fmt.Sprintf("OK %v %v", m["op"], args["cmd"])})
+			c.WriteText(out)
+		}
+	}()
+	f.waitFor(t, "connected notice", func(c call) bool { return strings.Contains(c.Body, "tavuru** verbunden") })
+	control("!rcon list")
+	f.waitFor(t, "command through the link", func(c call) bool { return strings.Contains(c.Body, "OK command list") })
+	if _, err := b.serverCommand("kw admin grant Anna_MC"); err != nil {
+		t.Fatalf("serverCommand through the link: %v", err)
+	}
+	control("!link")
+	f.waitFor(t, "link status", func(c call) bool { return strings.Contains(c.Body, "Angenommen: `"+fp) })
 }
