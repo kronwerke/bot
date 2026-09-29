@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Commands are English: `/apply` instead of `/bewerben`, and `/whitelist add` takes `player` and `user`.
+- `/link` puts streamers and Season 1 players on the whitelist right away, with a place of their own: streamers with Core's default slots, Season 1 players with `s1.slots`. `/dabei` is gone, `/link` does it. Changing the name moves the place, as long as no slot was given yet.
+- Accepting a streamer who already linked a name whitelists them at once.
+- `!sync` gives the place to everyone who linked while the server was not connected.
+- The server link: the [Kronwerke launcher](https://github.com/kronwerke/launcher) on the Minecraft server dials in at `/link`, so the host needs no API and the server no open port. Unknown launchers wait until the team accepts their fingerprint with `!link accept`; only a hash of the key is stored. Commands go through the link when it is up and through RCON otherwise.
+- `!mc status|start|stop|restart [update]|cmd|console|logs|ls|cat|launcher-update` in the control channel. Starts, crashes and stops of Minecraft are reported there, and places are synced when the server comes up.
+- `GET /api/status` for the website: online, players, launcher state, goals.
+- The WebSocket server side answers pings and assembles fragmented messages.
+- `tools/linkcli`: a stand-in for the bot, for testing a launcher.
+
 ## 0.2.0
 
 - `/dabei <name>` for everyone with the Season 1 role who is not a streamer: a place on the whitelist without a streamer's slot, and `s1.slots` (2) slots of their own to give with `/whitelist add`. Needs Kronwerke Core's `kw admin grant|ungrant`.

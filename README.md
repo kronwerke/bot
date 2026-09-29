@@ -20,7 +20,7 @@
 
 In Season 1 the Discord and the Minecraft server lived side by side. The old bot's captcha stopped working, applications from streamers got lost in DMs, and whitelisting was done by hand. Season 2 ties them together: you are on the Minecraft server because a streamer gave you a slot, and you keep it only while you are on the Discord.
 
-This bot does the Discord half of that. The Minecraft half is [kronwerke/core](https://github.com/kronwerke/core), and the two talk over RCON.
+This bot does the Discord half of that. The Minecraft half is [kronwerke/core](https://github.com/kronwerke/core). The server's [launcher](https://github.com/kronwerke/launcher) dials in to the bot, so the bot can start, stop, update and read the server without any host API; plain RCON works too.
 
 ## The trick
 
@@ -48,12 +48,14 @@ Everything else the team might want to change (channel ids, roles, timings) is a
 | `internal/discord` | REST with rate limits, the gateway with resume and heartbeats, interactions |
 | `internal/ws` | A small WebSocket client for the gateway |
 | `internal/captcha` | Captcha codes and the PNG they are drawn into |
+| `internal/link` | The server link: accepts the launcher, routes requests, reports its state |
 | `internal/rcon` | Minecraft RCON, including answers split over several packets |
 | `internal/mcping` | Server List Ping for the status message |
 | `internal/store` | State in one JSON file, written atomically |
 | `internal/update` | Self update from GitHub releases |
 | `deploy/` | systemd unit, installer, rollback guard, example configuration |
 | `tools/rconcli` | RCON from the command line, for testing |
+| `tools/linkcli` | A stand-in for the bot that a launcher can dial, for testing |
 
 Standard library only. An update is one static binary and nothing else.
 
@@ -70,9 +72,8 @@ On a server, see [docs/DEPLOY.md](docs/DEPLOY.md): download a release, run `inst
 | Command | Who | What |
 | --- | --- | --- |
 | Button in `verifizierung` | new members | Captcha, then `Mitglied` |
-| `/bewerben` | everyone | Apply as a streamer, opens a private channel with the team |
-| `/link <name>` | everyone | Your Minecraft name |
-| `/dabei <name>` | Season 1 players | A place without a streamer's slot, plus two slots of your own |
+| `/apply` | everyone | Apply as a streamer, opens a private channel with the team |
+| `/link <name>` | everyone | Your Minecraft name. Streamers and Season 1 players are whitelisted with it, with slots of their own |
 | `/whitelist add <player> <user>` | streamers, Season 1 players | Give one of your slots to someone on the Discord |
 | `/whitelist remove <player>` | streamers, Season 1 players | Free it again (a Season 1 name frees its slots too) |
 | `/whitelist list` | streamers, Season 1 players | Who has your slots |
@@ -86,8 +87,11 @@ In the control channel (team leads, and the bot's own account):
 | `!get [prefix]`, `!set key value`, `!unset key` | Settings; `-` switches a default off |
 | `!members` | Role counts, members without `Mitglied` |
 | `!verify-sync`, `!verify-panel`, `!apply-panel <channel>` | Repair roles, post the panels again |
-| `!apps`, `!invites` | Open applications, given slots |
+| `!apps`, `!invites` | Open applications, given slots and own places |
+| `!sync` | Whitelist streamers and Season 1 players who linked while the server was away |
 | `!rcon <command>` | A command on the Minecraft server |
+| `!link`, `!link accept <fingerprint>`, `!link revoke <fingerprint>` | The server link and which launchers may connect |
+| `!mc status`, `start`, `stop`, `restart [update]`, `cmd`, `console [n]`, `logs [n] [file]`, `ls`, `cat` | The Minecraft server through its launcher |
 | `!update`, `!rollback`, `!restart` | Look for a release now, go back one version, restart |
 
 ## Planned
