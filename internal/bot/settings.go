@@ -19,6 +19,7 @@ var defaults = map[string]string{
 	"role.unverified": "1473259494220763332",
 	"role.player":     "1554464523224617051", // Spieler, has a whitelist slot
 	"role.eventping":  "1473250017455243355",
+	"role.season1":    "1517207337574596608", // played Season 1
 
 	"channel.control":       "1554464518506156043",
 	"channel.logs":          "1473259886077939794",
@@ -39,6 +40,7 @@ var defaults = map[string]string{
 	"captcha.lock":      "10m",
 	"applications.keep": "48h",
 	"verify.autorole":   "on", // give new members the unverified role on join
+	"s1.slots":          "2",  // own slots for Season 1 players who join with /dabei
 }
 
 // setting returns the override from the store or the default.

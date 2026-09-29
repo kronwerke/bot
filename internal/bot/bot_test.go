@@ -1,13 +1,16 @@
 package bot
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -358,3 +361,145 @@ func TestWhitelistWithoutServerSaysSoAndChangesNothing(t *testing.T) {
 }
 
 var _ = discord.FlagEphemeral
+
+// fakeRCON answers Kronwerke Core admin commands and records them.
+type fakeRCON struct {
+	mu   sync.Mutex
+	cmds []string
+	addr string
+}
+
+func newFakeRCON(t *testing.T) *fakeRCON {
+	f := &fakeRCON{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	f.addr = ln.Addr().String()
+	write := func(w io.Writer, id, typ int32, body string) {
+		var b bytes.Buffer
+		binary.Write(&b, binary.LittleEndian, int32(len(body)+10))
+		binary.Write(&b, binary.LittleEndian, id)
+		binary.Write(&b, binary.LittleEndian, typ)
+		b.WriteString(body)
+		b.Write([]byte{0, 0})
+		w.Write(b.Bytes())
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				for {
+					var n int32
+					if binary.Read(c, binary.LittleEndian, &n) != nil {
+						return
+					}
+					buf := make([]byte, n)
+					if _, err := io.ReadFull(c, buf); err != nil {
+						return
+					}
+					id := int32(binary.LittleEndian.Uint32(buf[0:4]))
+					typ := int32(binary.LittleEndian.Uint32(buf[4:8]))
+					body := string(bytes.TrimRight(buf[8:], "\x00"))
+					switch typ {
+					case 3:
+						write(c, id, 2, "")
+					case 2:
+						f.mu.Lock()
+						f.cmds = append(f.cmds, body)
+						f.mu.Unlock()
+						answer := "OK"
+						switch {
+						case strings.HasPrefix(body, "kw admin grant "):
+							answer = "OK granted"
+						case strings.HasPrefix(body, "kw admin invite "):
+							answer = "OK slots used 1/2"
+						}
+						write(c, id, 0, answer)
+					default:
+						write(c, id, 0, "Unknown request 64")
+					}
+				}
+			}(c)
+		}
+	}()
+	return f
+}
+
+func (f *fakeRCON) commands() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.cmds...)
+}
+
+func TestSeason1PlayerJoinsInvitesAndLosesEverythingWhenLeaving(t *testing.T) {
+	rc := newFakeRCON(t)
+	f := newFakeDiscord(t)
+	b, err := New(Config{
+		Token: "tok", StatePath: filepath.Join(t.TempDir(), "state.json"),
+		Version: "v0.0.0-test", APIBase: f.rest.URL, RCONAddr: rc.addr, RCONPassword: "pw",
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go b.Run(ctx)
+	f.waitFor(t, "online", func(c call) bool { return strings.Contains(c.Body, "Online") })
+
+	mem, s1 := defaults["role.member"], defaults["role.season1"]
+	// without the Season 1 role: refused
+	f.send("INTERACTION_CREATE", map[string]any{"id": "4001", "token": "t4001", "type": 2, "guild_id": guildID, "application_id": appID,
+		"member": member(mem), "data": map[string]any{"name": "dabei", "options": []any{map[string]any{"name": "name", "type": 3, "value": "Anna_MC"}}}})
+	f.waitFor(t, "refusal", func(c call) bool {
+		return strings.Contains(c.Path, "/interactions/4001/") && strings.Contains(c.Body, "Season 1 gespielt")
+	})
+
+	f.send("INTERACTION_CREATE", map[string]any{"id": "4002", "token": "t4002", "type": 2, "guild_id": guildID, "application_id": appID,
+		"member": member(mem, s1), "data": map[string]any{"name": "dabei", "options": []any{map[string]any{"name": "name", "type": 3, "value": "Anna_MC"}}}})
+	f.waitFor(t, "welcome back", func(c call) bool {
+		return c.Method == "PATCH" && strings.Contains(c.Path, "t4002") && strings.Contains(c.Body, "Willkommen zur")
+	})
+	f.waitFor(t, "Spieler role", func(c call) bool {
+		return c.Method == "PUT" && c.Path == "/guilds/"+guildID+"/members/"+userID+"/roles/"+defaults["role.player"]
+	})
+	if g, ok := b.store.Grant(userID); !ok || g.Player != "Anna_MC" {
+		t.Fatalf("grant not stored: %+v", g)
+	}
+
+	// the Season 1 player gives one of her slots
+	f.send("INTERACTION_CREATE", map[string]any{"id": "4003", "token": "t4003", "type": 2, "guild_id": guildID, "application_id": appID,
+		"member": member(mem, s1),
+		"data": map[string]any{"name": "whitelist", "options": []any{map[string]any{"name": "add", "type": 1, "options": []any{
+			map[string]any{"name": "spieler", "type": 3, "value": "Ben_MC"},
+			map[string]any{"name": "nutzer", "type": 6, "value": "800000000000000002"},
+		}}}, "resolved": map[string]any{"members": map[string]any{"800000000000000002": map[string]any{"roles": []string{mem}}}}}})
+	f.waitFor(t, "invite done", func(c call) bool {
+		return c.Method == "PATCH" && strings.Contains(c.Path, "t4003") && strings.Contains(c.Body, "Ben_MC")
+	})
+
+	// she leaves the Discord: her invite goes first, then her own place
+	f.send("GUILD_MEMBER_REMOVE", map[string]any{"guild_id": guildID, "user": map[string]any{"id": userID, "username": "anna"}})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := b.store.Grant(userID); !ok {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	want := []string{"kw admin grant Anna_MC 2", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
+	if got := rc.commands(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("server commands\n got %q\nwant %q", got, want)
+	}
+	if _, ok := b.store.Grant(userID); ok {
+		t.Fatal("grant still stored after leaving")
+	}
+	if _, ok := b.store.Invite("Ben_MC"); ok {
+		t.Fatal("invite still stored after the inviter left")
+	}
+}

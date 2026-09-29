@@ -24,7 +24,7 @@ const controlHelp = "**Befehle im Kontrollkanal**\n" +
 	"`!verify-panel` Verifizierungs-Nachricht neu posten\n" +
 	"`!apply-panel <kanal-id>` Bewerben-Knopf in einen Kanal posten\n" +
 	"`!apps` Bewerbungen\n" +
-	"`!invites` Whitelist-Plätze\n" +
+	"`!invites` Whitelist-Plätze und Season-1-Plätze\n" +
 	"`!rcon <befehl>` Befehl auf dem Minecraft-Server"
 
 func (b *Bot) onMessage(ctx context.Context, m discord.Message) {
@@ -152,11 +152,14 @@ func (b *Bot) runControl(ctx context.Context, line string) string {
 		}
 		return strings.Join(lines, "\n")
 	case "!invites":
-		invs := b.store.InvitesBy("")
-		if len(invs) == 0 {
+		invs, grants := b.store.InvitesBy(""), b.store.Grants()
+		if len(invs) == 0 && len(grants) == 0 {
 			return "Keine Whitelist-Plätze vergeben."
 		}
 		var lines []string
+		for _, g := range grants {
+			lines = append(lines, fmt.Sprintf("%s (<@%s>) Season 1", g.Player, g.DiscordID))
+		}
 		for _, v := range invs {
 			lines = append(lines, fmt.Sprintf("%s (<@%s>) von <@%s>", v.Player, v.DiscordID, v.StreamerID))
 		}
@@ -196,9 +199,9 @@ func (b *Bot) statusText() string {
 	lines = append(lines,
 		fmt.Sprintf("**%s**, läuft seit %s, Gateway %s, %d Reconnects", b.cfg.Version, up, gw, b.reconnects()),
 		fmt.Sprintf("Speicher %d MiB, Goroutinen %d", ms.Alloc>>20, runtime.NumGoroutine()),
-		fmt.Sprintf("Verifiziert %d (seit Start %d, falsch %d), Bewerbungen %d, Whitelist %d, Befehle %d, Fehler %d",
+		fmt.Sprintf("Verifiziert %d (seit Start %d, falsch %d), Bewerbungen %d, Whitelist %d plus %d Season 1, Befehle %d, Fehler %d",
 			b.store.VerifiedCount(), b.stats.verified.Load(), b.stats.failed.Load(), b.stats.applications.Load(),
-			len(b.store.InvitesBy("")), b.stats.commands.Load(), b.stats.errors.Load()),
+			len(b.store.InvitesBy("")), len(b.store.Grants()), b.stats.commands.Load(), b.stats.errors.Load()),
 	)
 	b.updateMu.Lock()
 	lc := b.lastCheck

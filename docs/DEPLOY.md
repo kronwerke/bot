@@ -67,7 +67,7 @@ Everything else is a setting, changed at run time in the control channel:
 | Setting | Default | What |
 | --- | --- | --- |
 | `guild` | the Kronwerke server | The only server the bot acts on |
-| `role.*` | Kronwerke ids | `lead`, `admin`, `staff`, `streamer`, `partner`, `member`, `unverified`, `player`, `eventping` |
+| `role.*` | Kronwerke ids | `lead`, `admin`, `staff`, `streamer`, `partner`, `member`, `unverified`, `player`, `eventping`, `season1` |
 | `channel.*` | Kronwerke ids | `control`, `logs`, `verify`, `welcome`, `whitelist`, `status`, `trash`, `progress` (off) |
 | `category.team` | Kronwerke id | Where the team's channels are |
 | `category.applications` | empty | Created as `Bewerbungen` on the first application |
@@ -77,6 +77,7 @@ Everything else is a setting, changed at run time in the control channel:
 | `captcha.minutes`, `captcha.attempts`, `captcha.lock` | `10`, `3`, `10m` | Captcha lifetime, tries, lock after the last wrong try |
 | `applications.keep` | `48h` | How long a decided application channel stays |
 | `verify.autorole` | `on` | Give `unverified` on join |
+| `s1.slots` | `2` | Own slots for Season 1 players who join with `/dabei` |
 
 ## The Minecraft server
 

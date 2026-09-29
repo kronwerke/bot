@@ -30,6 +30,14 @@ type Application struct {
 	DecidedBy string    `json:"decided_by,omitempty"`
 }
 
+// Grant is a place on the whitelist the team gave without a streamer's slot
+// (Season 1 players). The player also gets slots of their own.
+type Grant struct {
+	Player    string    `json:"player"` // Minecraft name
+	DiscordID string    `json:"discord_id"`
+	Created   time.Time `json:"created"`
+}
+
 // Invite is a whitelist slot given by a streamer to a player.
 type Invite struct {
 	Player     string    `json:"player"` // Minecraft name
@@ -47,6 +55,7 @@ type data struct {
 	Links        map[string]string      `json:"links"`   // discord id -> minecraft name
 	Invites      map[string]Invite      `json:"invites"` // lower case minecraft name -> invite
 	Verified     map[string]time.Time   `json:"verified"`
+	Grants       map[string]Grant       `json:"grants"` // discord id -> grant
 }
 
 // Store is safe for concurrent use.
@@ -97,6 +106,9 @@ func (s *Store) init() {
 	}
 	if s.d.Verified == nil {
 		s.d.Verified = map[string]time.Time{}
+	}
+	if s.d.Grants == nil {
+		s.d.Grants = map[string]Grant{}
 	}
 }
 
@@ -300,6 +312,44 @@ func (s *Store) InvitesOf(discordID string) (out []Invite) {
 			}
 		}
 	})
+	return
+}
+
+// ---- grants ----
+
+func (s *Store) Grant(discordID string) (g Grant, ok bool) {
+	s.view(func(d *data) { g, ok = d.Grants[discordID] })
+	return
+}
+
+// GrantByPlayer finds a grant by Minecraft name, ignoring case.
+func (s *Store) GrantByPlayer(player string) (g Grant, ok bool) {
+	s.view(func(d *data) {
+		for _, x := range d.Grants {
+			if lower(x.Player) == lower(player) {
+				g, ok = x, true
+				return
+			}
+		}
+	})
+	return
+}
+
+func (s *Store) PutGrant(g Grant) error {
+	return s.update(func(d *data) { d.Grants[g.DiscordID] = g })
+}
+
+func (s *Store) DeleteGrant(discordID string) error {
+	return s.update(func(d *data) { delete(d.Grants, discordID) })
+}
+
+func (s *Store) Grants() (out []Grant) {
+	s.view(func(d *data) {
+		for _, g := range d.Grants {
+			out = append(out, g)
+		}
+	})
+	sort.Slice(out, func(a, b int) bool { return out[a].Player < out[b].Player })
 	return
 }
 

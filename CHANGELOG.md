@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- `/dabei <name>` for everyone with the Season 1 role who is not a streamer: a place on the whitelist without a streamer's slot, and `s1.slots` (2) slots of their own to give with `/whitelist add`. Needs Kronwerke Core's `kw admin grant|ungrant`.
+- Leaving the Discord also takes a Season 1 place back, together with every slot that player gave. `/whitelist remove` on a Season 1 name does the same for the team or the player.
+- Every event the bot records also goes to the journal, so `journalctl -u kronwerke-bot` shows what `!events` shows.
+- `!invites` and `!status` count Season 1 places.
+
 ## 0.1.0
 
 First version.

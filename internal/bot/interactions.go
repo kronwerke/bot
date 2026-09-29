@@ -24,7 +24,14 @@ func commands() []discord.ApplicationCommand {
 			},
 		},
 		{
-			Name: "whitelist", Description: "Whitelist-Plätze verwalten (Streamer)",
+			Name: "dabei", Description: "Season 1 gespielt? Dann bist du ohne Streamer-Platz dabei",
+			DMPermission: ptr(false),
+			Options: []discord.ApplicationCommandOption{
+				{Type: discord.OptString, Name: "name", Description: "Dein Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
+			},
+		},
+		{
+			Name: "whitelist", Description: "Whitelist-Plätze verwalten (Streamer und Season-1-Spieler)",
 			DMPermission: ptr(false),
 			Options: []discord.ApplicationCommandOption{
 				{Type: discord.OptSubCommand, Name: "add", Description: "Jemanden auf die Whitelist setzen", Options: []discord.ApplicationCommandOption{
@@ -60,6 +67,8 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 			b.openApplication(ctx, i)
 		case "link":
 			b.linkMinecraft(ctx, i)
+		case "dabei":
+			b.joinSeason1(ctx, i)
 		case "whitelist":
 			if len(i.Data.Options) == 0 {
 				return

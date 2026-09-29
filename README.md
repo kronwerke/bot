@@ -72,9 +72,10 @@ On a server, see [docs/DEPLOY.md](docs/DEPLOY.md): download a release, run `inst
 | Button in `verifizierung` | new members | Captcha, then `Mitglied` |
 | `/bewerben` | everyone | Apply as a streamer, opens a private channel with the team |
 | `/link <name>` | everyone | Your Minecraft name |
-| `/whitelist add <player> <user>` | streamers | Give one of your slots to someone on the Discord |
-| `/whitelist remove <player>` | streamers | Free it again |
-| `/whitelist list` | streamers | Who has your slots |
+| `/dabei <name>` | Season 1 players | A place without a streamer's slot, plus two slots of your own |
+| `/whitelist add <player> <user>` | streamers, Season 1 players | Give one of your slots to someone on the Discord |
+| `/whitelist remove <player>` | streamers, Season 1 players | Free it again (a Season 1 name frees its slots too) |
+| `/whitelist list` | streamers, Season 1 players | Who has your slots |
 
 In the control channel (team leads, and the bot's own account):
 

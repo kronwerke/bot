@@ -49,9 +49,59 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 	b.reply(ctx, i, fmt.Sprintf("Dein Minecraft-Name ist jetzt **%s**.", name))
 }
 
+// joinSeason1 is /dabei: a Season 1 player gets a place without a streamer's slot and
+// slots of their own.
+func (b *Bot) joinSeason1(ctx context.Context, i *discord.Interaction) {
+	u := i.Actor()
+	if !i.Member.HasRole(b.setting("role.season1")) {
+		b.reply(ctx, i, "Das ist für alle, die in Season 1 gespielt haben. Du kommst über einen Streamer auf die Whitelist.")
+		return
+	}
+	if i.Member.HasRole(b.setting("role.streamer")) {
+		b.reply(ctx, i, "Als Streamer hast du deine eigenen Plätze. Trag dich mit `/link` ein, dein Platz kommt vom Team.")
+		return
+	}
+	if g, ok := b.store.Grant(u.ID); ok {
+		b.reply(ctx, i, fmt.Sprintf("Du bist schon dabei, als **%s**.", g.Player))
+		return
+	}
+	o, _ := i.Data.Option("name")
+	name := strings.TrimSpace(o.String())
+	if !mcName.MatchString(name) {
+		b.reply(ctx, i, "Das ist kein gültiger Minecraft-Name (3 bis 16 Zeichen, Buchstaben, Zahlen, Unterstrich).")
+		return
+	}
+	if inv, ok := b.store.Invite(name); ok {
+		b.reply(ctx, i, fmt.Sprintf("**%s** hat schon einen Platz (von <@%s>).", inv.Player, inv.StreamerID))
+		return
+	}
+	slots := b.number("s1.slots", 2)
+	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
+	if _, err := b.serverCommand(fmt.Sprintf("kw admin grant %s %d", name, slots)); err != nil {
+		b.rest.EditReply(ctx, i, discord.MessageSend{Content: "Das ging nicht: " + err.Error()})
+		return
+	}
+	b.store.PutGrant(store.Grant{Player: name, DiscordID: u.ID, Created: time.Now()})
+	b.store.SetLink(u.ID, name)
+	if role := b.setting("role.player"); role != "" {
+		b.rest.AddRole(ctx, b.guild(), u.ID, role, "Season 1 player, joined with /dabei")
+	}
+	b.stats.invites.Add(1)
+	if ch := b.setting("channel.whitelist"); ch != "" {
+		b.rest.SendMessage(ctx, ch, discord.MessageSend{
+			Content:         fmt.Sprintf("🎟️ **%s** (<@%s>) ist aus Season 1 wieder dabei, mit %d eigenen Plätzen.", name, u.ID, slots),
+			AllowedMentions: discord.NoMentions,
+		})
+	}
+	b.audit(ctx, fmt.Sprintf("Season 1: %s (<@%s>) ist als %s dabei.", u.Name(), u.ID, name))
+	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf(
+		"Willkommen zurück! **%s** ist auf der Whitelist. Danke fürs Spielen in Season 1: Du hast %d eigene Plätze, die du mit `/whitelist add` vergeben kannst.", name, slots)})
+}
+
 func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub discord.CommandOption) {
-	if !i.Member.HasRole(b.setting("role.streamer")) && !b.isTeam(i.Member) {
-		b.reply(ctx, i, "Nur Streamer können Leute auf die Whitelist setzen.")
+	_, season1 := b.store.Grant(i.Actor().ID)
+	if !i.Member.HasRole(b.setting("role.streamer")) && !b.isTeam(i.Member) && !season1 {
+		b.reply(ctx, i, "Nur Streamer und Season-1-Spieler mit `/dabei` können Leute auf die Whitelist setzen.")
 		return
 	}
 	streamer := i.Actor()
@@ -121,6 +171,10 @@ func (b *Bot) whitelistRemove(ctx context.Context, i *discord.Interaction, sub d
 	}
 	inv, ok := b.store.Invite(player)
 	if !ok {
+		if g, ok := b.store.GrantByPlayer(player); ok {
+			b.removeGrant(ctx, i, g)
+			return
+		}
 		b.reply(ctx, i, "Für diesen Namen gibt es keinen Platz.")
 		return
 	}
@@ -167,7 +221,8 @@ func (b *Bot) revoke(ctx context.Context, inv store.Invite, why string) error {
 		return err
 	}
 	b.store.DeleteInvite(inv.Player)
-	if role := b.setting("role.player"); role != "" && len(b.store.InvitesOf(inv.DiscordID)) == 0 {
+	_, granted := b.store.Grant(inv.DiscordID)
+	if role := b.setting("role.player"); role != "" && len(b.store.InvitesOf(inv.DiscordID)) == 0 && !granted {
 		b.rest.RemoveRole(ctx, b.guild(), inv.DiscordID, role, "Whitelist slot removed")
 	}
 	if ch := b.setting("channel.whitelist"); ch != "" {
@@ -178,9 +233,50 @@ func (b *Bot) revoke(ctx context.Context, inv store.Invite, why string) error {
 	return nil
 }
 
+// removeGrant is /whitelist remove on a Season 1 place: the team or the player themselves.
+func (b *Bot) removeGrant(ctx context.Context, i *discord.Interaction, g store.Grant) {
+	if g.DiscordID != i.Actor().ID && !b.isTeam(i.Member) {
+		b.reply(ctx, i, "Diesen Platz kann nur das Team oder der Spieler selbst zurückgeben.")
+		return
+	}
+	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
+	if err := b.ungrant(ctx, g, "entfernt von "+i.Actor().Name()); err != nil {
+		b.rest.EditReply(ctx, i, discord.MessageSend{Content: "Das ging nicht: " + err.Error()})
+		return
+	}
+	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("**%s** ist von der Whitelist entfernt, mit allen Plätzen, die vergeben waren.", g.Player)})
+}
+
+// ungrant takes a Season 1 place back: first every slot the player gave, then their own.
+func (b *Bot) ungrant(ctx context.Context, g store.Grant, why string) error {
+	for _, inv := range b.store.InvitesBy(g.DiscordID) {
+		if err := b.revoke(ctx, inv, why); err != nil {
+			return err
+		}
+	}
+	if _, err := b.serverCommand("kw admin ungrant " + g.Player); err != nil {
+		return err
+	}
+	b.store.DeleteGrant(g.DiscordID)
+	if role := b.setting("role.player"); role != "" && len(b.store.InvitesOf(g.DiscordID)) == 0 {
+		b.rest.RemoveRole(ctx, b.guild(), g.DiscordID, role, "Season 1 place removed")
+	}
+	if ch := b.setting("channel.whitelist"); ch != "" {
+		b.rest.SendMessage(ctx, ch, discord.MessageSend{
+			Content: fmt.Sprintf("➖ **%s** ist nicht mehr auf der Whitelist (%s).", g.Player, why), AllowedMentions: discord.NoMentions,
+		})
+	}
+	return nil
+}
+
 // onMemberLeave enforces the rule "no Discord, no slot".
 func (b *Bot) onMemberLeave(ctx context.Context, u discord.User) {
 	b.events.add("leave %s (%s)", u.Username, u.ID)
+	if g, ok := b.store.Grant(u.ID); ok {
+		if err := b.ungrant(ctx, g, "hat den Discord verlassen"); err != nil {
+			b.fail(ctx, fmt.Sprintf("Season-1-Platz von %s nach dem Verlassen entfernen", g.Player), err)
+		}
+	}
 	for _, inv := range b.store.InvitesOf(u.ID) {
 		if err := b.revoke(ctx, inv, "hat den Discord verlassen"); err != nil {
 			b.fail(ctx, fmt.Sprintf("Whitelist-Platz von %s nach dem Verlassen entfernen", inv.Player), err)

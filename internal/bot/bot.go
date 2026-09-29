@@ -88,6 +88,7 @@ func New(cfg Config, log *slog.Logger) (*Bot, error) {
 		b.rest.Base = cfg.APIBase
 	}
 	b.events.max = 200
+	b.events.log = log
 	if cfg.RCONAddr != "" {
 		b.rcon = &rcon.Client{Addr: cfg.RCONAddr, Password: cfg.RCONPassword}
 	}
@@ -305,12 +306,17 @@ type eventLog struct {
 	mu    sync.Mutex
 	max   int
 	items []string
+	log   *slog.Logger // every event also goes to the journal
 }
 
 func (e *eventLog) add(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	if e.log != nil {
+		e.log.Info("event", "what", msg)
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	line := time.Now().UTC().Format("01-02 15:04:05") + " " + fmt.Sprintf(format, args...)
+	line := time.Now().UTC().Format("01-02 15:04:05") + " " + msg
 	e.items = append(e.items, line)
 	if len(e.items) > e.max {
 		e.items = e.items[len(e.items)-e.max:]
