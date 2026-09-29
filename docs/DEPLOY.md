@@ -77,11 +77,30 @@ Everything else is a setting, changed at run time in the control channel:
 | `captcha.minutes`, `captcha.attempts`, `captcha.lock` | `10`, `3`, `10m` | Captcha lifetime, tries, lock after the last wrong try |
 | `applications.keep` | `48h` | How long a decided application channel stays |
 | `verify.autorole` | `on` | Give `unverified` on join |
-| `s1.slots` | `2` | Own slots for Season 1 players who join with `/dabei` |
+| `s1.slots` | `2` | Own slots for Season 1 players, given with `/link` |
 
 ## The Minecraft server
 
-In `server.properties`:
+Two ways, and the bot uses whichever is there, the link first.
+
+**The launcher (recommended).** The [Kronwerke launcher](https://github.com/kronwerke/launcher) runs on the server as its jar and dials in to the bot at `/link`. It needs no open port on the server and no API from the host. On kvm-45, Caddy passes the public name to the bot, only for the link and the API:
+
+```
+api.kronwerke.com {
+	import tls_cf
+	@bot path /link /api/*
+	handle @bot {
+		reverse_proxy 127.0.0.1:13030
+	}
+	handle {
+		respond 404
+	}
+}
+```
+
+The launcher's first connection waits: the control channel shows its fingerprint, and the launcher prints the same fingerprint in the server console. When they match, `!link accept <fingerprint>`. From then on `!mc status` answers.
+
+**RCON.** In `server.properties`:
 
 ```
 enable-rcon=true
@@ -98,6 +117,8 @@ KW_RCON_PASSWORD=<the same>
 ```
 
 and restart the bot. `!status` shows the Minecraft line, `!rcon list` answers.
+
+`KW_MC_ADDR` is worth setting either way: the status message and `/api/status` use it.
 
 ## Updates
 
