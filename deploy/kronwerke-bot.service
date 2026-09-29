@@ -1,0 +1,41 @@
+[Unit]
+Description=Kronwerke Discord bot
+Documentation=https://github.com/kronwerke/bot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=kronwerke-bot
+Group=kronwerke-bot
+EnvironmentFile=/etc/kronwerke-bot/bot.env
+ExecStartPre=/usr/local/lib/kronwerke-bot/rollback-guard.sh
+ExecStart=/srv/projects/kronwerke-bot/bin/kronwerke-bot
+# The bot exits 0 to load a new release; always start it again.
+Restart=always
+RestartSec=5
+
+# The bot may only write its own folder (binary for self updates, state).
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/projects/kronwerke-bot
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
