@@ -34,12 +34,12 @@ This creates the user `kronwerke-bot`, `/srv/projects/kronwerke-bot/{bin,state}`
 ## 3. The token
 
 ```bash
-read -rsp 'Token: ' t && echo \
+printf 'Token: ' && read -rs t && echo \
   && printf '%s\n' "$t" | sudo sh -c 'IFS= read -r t; sed -i "s|^DISCORD_TOKEN=.*|DISCORD_TOKEN=$t|" /etc/kronwerke-bot/bot.env' \
   && unset t && sudo grep -c '^DISCORD_TOKEN=.\{50,\}' /etc/kronwerke-bot/bot.env
 ```
 
-Pass: `1`. The bare token and the form `Bot <token>` both work.
+Pass: `1`. The bare token and the form `Bot <token>` both work. The block runs in bash and zsh.
 
 ## 4. Start
 
