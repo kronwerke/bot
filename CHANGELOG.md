@@ -4,6 +4,7 @@
 
 - Messages carry no emoji any more: status, control channel, whitelist and application lines are plain text, and the goal bar is drawn with block characters.
 - The admin API takes `"filter"`, a regular expression; only matching lines of a text answer come back.
+- Leaving the Discord also removes the linked Minecraft name, the verification record and captcha state, after the whitelist places are taken back. Decided applications are dropped once their channel is deleted; the decision stays in the log channel.
 
 ## 0.4.0
 

@@ -131,6 +131,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 	go b.loop(ctx, "captcha sweep", time.Minute, func(ctx context.Context) { b.store.SweepCaptchas(time.Now()) })
 	go b.loop(ctx, "applications", 30*time.Minute, b.sweepApplications)
+	go b.loop(ctx, "privacy", time.Hour, b.sweepPrivacy)
 	go b.loop(ctx, "server status", b.duration("status.interval", time.Minute), b.refreshStatus)
 
 	select {
@@ -230,6 +231,7 @@ func (b *Bot) dispatch(event string, data json.RawMessage) {
 			}
 			if json.Unmarshal(data, &ev) == nil && ev.GuildID == b.guild() {
 				b.onMemberLeave(ctx, ev.User)
+				b.forget(ev.User.ID)
 			}
 		case "MESSAGE_CREATE":
 			var m discord.Message
