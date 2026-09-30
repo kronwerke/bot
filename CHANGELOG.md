@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3
+
+- Without `KW_MC_ADDR` the status comes from the launcher: online while Minecraft runs, players from `list`. The website and the status message showed the server as offline before.
+
 ## 0.4.2
 
 - The admin API's `"filter"` also works on answers that are a list of lines, which is what the launcher sends for `logs` and `console`.

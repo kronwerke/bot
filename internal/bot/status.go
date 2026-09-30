@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,8 +22,15 @@ type pingResult struct {
 // refreshStatus pings the Minecraft server and keeps one message in the status channel
 // current. The message is only edited when what it says changes.
 func (b *Bot) refreshStatus(ctx context.Context) {
-	if b.cfg.MinecraftAddr != "" {
-		st, err := mcping.Ping(b.cfg.MinecraftAddr, 5*time.Second)
+	_, linked := b.link.Connected()
+	if b.cfg.MinecraftAddr != "" || linked {
+		var st mcping.Status
+		var err error
+		if b.cfg.MinecraftAddr != "" {
+			st, err = mcping.Ping(b.cfg.MinecraftAddr, 5*time.Second)
+		} else {
+			st, err = b.pingViaLink()
+		}
 		b.statusMu.Lock()
 		was := b.lastPing
 		b.lastPing = pingResult{at: time.Now(), status: st, err: err}
@@ -80,6 +89,44 @@ func (b *Bot) postStatus(ctx context.Context) {
 	}
 	b.store.SetSetting("msg.status", m.ID)
 	b.store.SetSetting("status.sig", sig)
+}
+
+// pingViaLink asks the launcher when there is no address to ping (KW_MC_ADDR empty):
+// the server counts as online while Minecraft runs, and "list" gives the players.
+func (b *Bot) pingViaLink() (mcping.Status, error) {
+	i, ok := b.link.Connected()
+	if !ok {
+		return mcping.Status{}, errNoServer
+	}
+	if i.State != "running" {
+		return mcping.Status{}, fmt.Errorf("Minecraft %s", stateWord(i.State))
+	}
+	out, err := b.console("list")
+	if err != nil {
+		return mcping.Status{}, err
+	}
+	st, err := parseList(out)
+	st.Version = "Pack " + i.Pack
+	return st, err
+}
+
+var listLine = regexp.MustCompile(`There are (\d+) of a max of (\d+) players online:?(.*)`)
+
+// parseList reads the answer of the vanilla "list" command.
+func parseList(out string) (mcping.Status, error) {
+	m := listLine.FindStringSubmatch(strings.TrimSpace(out))
+	if m == nil {
+		return mcping.Status{}, fmt.Errorf("unexpected answer to list: %q", out)
+	}
+	var st mcping.Status
+	st.Online, _ = strconv.Atoi(m[1])
+	st.Max, _ = strconv.Atoi(m[2])
+	for _, n := range strings.Split(m[3], ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			st.Players = append(st.Players, n)
+		}
+	}
+	return st, nil
 }
 
 var berlin = func() *time.Location {
