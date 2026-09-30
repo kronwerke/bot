@@ -59,3 +59,54 @@ func (b *Bot) checkUpdate(ctx context.Context, verbose bool) {
 	}
 	b.requestRestart("Update auf " + r.Tag)
 }
+
+// siteLoop keeps the website on its latest release: once shortly after start, then with
+// the update interval.
+func (b *Bot) siteLoop(ctx context.Context) {
+	select {
+	case <-time.After(20 * time.Second):
+	case <-ctx.Done():
+		return
+	}
+	for {
+		b.syncSite(ctx, false)
+		select {
+		case <-time.After(b.duration("update.interval", 10*time.Minute)):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// syncSite installs a new website release. verbose also reports "nothing new" (for !site).
+func (b *Bot) syncSite(ctx context.Context, verbose bool) string {
+	defer b.recover("site")
+	tag, changed, err := b.site.Sync(ctx)
+	switch {
+	case err != nil:
+		b.log.Warn("site sync", "err", err)
+		b.siteMu.Lock()
+		prev := b.siteErr
+		b.siteErr = err.Error()
+		b.siteMu.Unlock()
+		msg := "Website-Update fehlgeschlagen: " + err.Error()
+		if verbose || prev != err.Error() {
+			b.control(ctx, msg)
+		}
+		return msg
+	case changed:
+		b.siteMu.Lock()
+		b.siteErr = ""
+		b.siteMu.Unlock()
+		msg := "🌐 Website " + tag + " ist live."
+		b.control(ctx, msg)
+		return msg
+	}
+	b.siteMu.Lock()
+	b.siteErr = ""
+	b.siteMu.Unlock()
+	if tag == "" {
+		return "Noch kein Website-Release."
+	}
+	return "Website " + tag + " ist aktuell."
+}

@@ -45,9 +45,15 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 		metric("kronwerke_bot_invites_total", "Whitelist slots given since start.", "counter", b.stats.invites.Load())
 		metric("kronwerke_bot_errors_total", "Errors since start.", "counter", b.stats.errors.Load())
 	})
-	// the Minecraft server's launcher; the reverse proxy passes only this path and /api
+	// the Minecraft server's launcher, the public API, the admin API and the website;
+	// the reverse proxy keeps /healthz and /metrics to itself
 	mux.Handle("GET /link", b.link)
 	mux.HandleFunc("GET /api/status", b.apiStatus)
+	mux.HandleFunc("GET /api/admin/bot", b.adminBot)
+	mux.HandleFunc("POST /api/admin/link", b.adminLink)
+	if b.site != nil {
+		mux.Handle("GET /", b.site.Handler())
+	}
 	srv := &http.Server{Addr: b.cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
