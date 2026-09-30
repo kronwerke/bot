@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"github.com/kronwerke/bot/internal/bot"
+	"github.com/kronwerke/bot/internal/site"
 	"github.com/kronwerke/bot/internal/update"
 )
 
@@ -85,6 +86,15 @@ func config() (bot.Config, error) {
 		RCONPassword:  os.Getenv("KW_RCON_PASSWORD"),
 		Version:       version,
 		APIBase:       os.Getenv("KW_DISCORD_API"), // tests only
+		AdminToken:    strings.TrimSpace(os.Getenv("KW_ADMIN_TOKEN")),
+	}
+	if repo := env("KW_SITE_REPO", "kronwerke/website"); repo != "off" {
+		cfg.Site = &site.Site{
+			Repo:      repo,
+			API:       env("KW_UPDATE_API", "https://api.github.com"),
+			Dir:       filepath.Join(stateDir, "site"),
+			UserAgent: "kronwerke-bot/" + version,
+		}
 	}
 	if cfg.RCONAddr != "" && cfg.RCONPassword == "" {
 		return cfg, errors.New("KW_RCON_ADDR is set but KW_RCON_PASSWORD is empty")

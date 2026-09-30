@@ -78,7 +78,8 @@ func (b *Bot) siteLoop(ctx context.Context) {
 	}
 }
 
-// syncSite installs a new website release. verbose also reports "nothing new" (for !site).
+// syncSite installs a new website release. The loop posts what happened to the control
+// channel itself; !site (verbose) gets the line back and posts it as its answer.
 func (b *Bot) syncSite(ctx context.Context, verbose bool) string {
 	defer b.recover("site")
 	tag, changed, err := b.site.Sync(ctx)
@@ -90,7 +91,7 @@ func (b *Bot) syncSite(ctx context.Context, verbose bool) string {
 		b.siteErr = err.Error()
 		b.siteMu.Unlock()
 		msg := "Website-Update fehlgeschlagen: " + err.Error()
-		if verbose || prev != err.Error() {
+		if !verbose && prev != err.Error() {
 			b.control(ctx, msg)
 		}
 		return msg
@@ -99,7 +100,9 @@ func (b *Bot) syncSite(ctx context.Context, verbose bool) string {
 		b.siteErr = ""
 		b.siteMu.Unlock()
 		msg := "🌐 Website " + tag + " ist live."
-		b.control(ctx, msg)
+		if !verbose {
+			b.control(ctx, msg)
+		}
 		return msg
 	}
 	b.siteMu.Lock()
