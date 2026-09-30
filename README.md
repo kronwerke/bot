@@ -106,7 +106,7 @@ On `KW_HTTP_ADDR`, behind the reverse proxy:
 | `GET /link` | The launcher's WebSocket |
 | `GET /api/status` | Public: server online, players, launcher state, goals |
 | `GET /api/admin/bot` | Admin: version, link, website version |
-| `POST /api/admin/link` | Admin: `{"op": "logs", "args": {"lines": 5000}}` and the other launcher operations (`status`, `console`, `logs`, `ls`, `read`, `command`, `start`, `stop`, `restart`, `write`, `delete`). Everything that changes the server is posted to the control channel |
+| `POST /api/admin/link` | Admin: `{"op": "logs", "args": {"lines": 5000}}` and the other launcher operations (`status`, `console`, `logs`, `ls`, `read`, `command`, `start`, `stop`, `restart`, `write`, `delete`). `"filter": "<regexp>"` keeps only the matching lines of a text answer. Everything that changes the server is posted to the control channel |
 | `/healthz`, `/metrics` | Loopback only; the proxy does not pass them |
 
 The admin paths exist only with `KW_ADMIN_TOKEN` set and answer 404 to anyone without it.
