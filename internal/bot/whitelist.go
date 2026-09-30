@@ -97,9 +97,9 @@ func (b *Bot) grant(ctx context.Context, u discord.User, name, kind string, slot
 		b.rest.AddRole(ctx, b.guild(), u.ID, role, "Own whitelist place ("+kind+")")
 	}
 	b.stats.invites.Add(1)
-	line := fmt.Sprintf("🎥 **%s** (<@%s>) ist als Streamer auf der Whitelist.", name, u.ID)
+	line := fmt.Sprintf("**%s** (<@%s>) ist als Streamer auf der Whitelist.", name, u.ID)
 	if kind == store.KindSeason1 {
-		line = fmt.Sprintf("🎟️ **%s** (<@%s>) ist aus Season 1 wieder dabei, mit %d eigenen Plätzen.", name, u.ID, slots)
+		line = fmt.Sprintf("**%s** (<@%s>) ist aus Season 1 wieder dabei, mit %d eigenen Plätzen.", name, u.ID, slots)
 	}
 	if ch := b.setting("channel.whitelist"); ch != "" {
 		b.rest.SendMessage(ctx, ch, discord.MessageSend{Content: line, AllowedMentions: discord.NoMentions})
@@ -206,7 +206,7 @@ func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub disc
 	b.stats.invites.Add(1)
 	if ch := b.setting("channel.whitelist"); ch != "" {
 		b.rest.SendMessage(ctx, ch, discord.MessageSend{
-			Content:         fmt.Sprintf("➕ **%s** (<@%s>) ist auf der Whitelist, eingeladen von <@%s>.", player, target, streamer.ID),
+			Content:         fmt.Sprintf("**%s** (<@%s>) ist auf der Whitelist, eingeladen von <@%s>.", player, target, streamer.ID),
 			AllowedMentions: discord.NoMentions,
 		})
 	}
@@ -282,7 +282,7 @@ func (b *Bot) revoke(ctx context.Context, inv store.Invite, why string) error {
 	}
 	if ch := b.setting("channel.whitelist"); ch != "" {
 		b.rest.SendMessage(ctx, ch, discord.MessageSend{
-			Content: fmt.Sprintf("➖ **%s** ist nicht mehr auf der Whitelist (%s).", inv.Player, why), AllowedMentions: discord.NoMentions,
+			Content: fmt.Sprintf("**%s** ist nicht mehr auf der Whitelist (%s).", inv.Player, why), AllowedMentions: discord.NoMentions,
 		})
 	}
 	return nil
@@ -318,7 +318,7 @@ func (b *Bot) ungrant(ctx context.Context, g store.Grant, why string) error {
 	}
 	if ch := b.setting("channel.whitelist"); ch != "" {
 		b.rest.SendMessage(ctx, ch, discord.MessageSend{
-			Content: fmt.Sprintf("➖ **%s** ist nicht mehr auf der Whitelist (%s).", g.Player, why), AllowedMentions: discord.NoMentions,
+			Content: fmt.Sprintf("**%s** ist nicht mehr auf der Whitelist (%s).", g.Player, why), AllowedMentions: discord.NoMentions,
 		})
 	}
 	return nil

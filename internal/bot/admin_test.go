@@ -56,7 +56,11 @@ func TestAdminAPINeedsTheTokenAndForwardsToTheLauncher(t *testing.T) {
 				continue
 			}
 			args, _ := m["args"].(map[string]any)
-			out, _ := json.Marshal(map[string]any{"type": "res", "id": m["id"], "ok": true, "data": fmt.Sprintf("%v %v", m["op"], args["cmd"])})
+			data := fmt.Sprintf("%v %v", m["op"], args["cmd"])
+			if m["op"] == "logs" {
+				data = "[INFO] fine\n[WARN] odd\n[ERROR] bad\n[INFO] fine again"
+			}
+			out, _ := json.Marshal(map[string]any{"type": "res", "id": m["id"], "ok": true, "data": data})
 			c.WriteText(out)
 		}
 	}()
@@ -90,6 +94,13 @@ func TestAdminAPINeedsTheTokenAndForwardsToTheLauncher(t *testing.T) {
 	code, body := do("POST", "/api/admin/link", "s3cret-token", `{"op":"command","args":{"cmd":"list"}}`)
 	if code != 200 || !strings.Contains(body, "command list") {
 		t.Fatalf("command: %d %s", code, body)
+	}
+	code, body = do("POST", "/api/admin/link", "s3cret-token", `{"op":"logs","filter":"WARN|ERROR"}`)
+	if code != 200 || body != `{"data":"[WARN] odd\n[ERROR] bad"}`+"\n" {
+		t.Fatalf("filtered logs: %d %q", code, body)
+	}
+	if code, _ := do("POST", "/api/admin/link", "s3cret-token", `{"op":"logs","filter":"("}`); code != http.StatusBadRequest {
+		t.Fatalf("a broken filter: %d, want 400", code)
 	}
 	f.waitFor(t, "announced in the control channel", func(c call) bool {
 		return c.Path == "/channels/"+ctl+"/messages" && strings.Contains(c.Body, "Admin-API: Befehl `list`")

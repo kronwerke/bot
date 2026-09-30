@@ -161,7 +161,7 @@ func (b *Bot) checkCaptcha(ctx context.Context, i *discord.Interaction) {
 	}
 	b.store.MarkVerified(u.ID)
 	b.stats.verified.Add(1)
-	b.audit(ctx, fmt.Sprintf("✅ %s (<@%s>) ist verifiziert.", u.Name(), u.ID))
+	b.audit(ctx, fmt.Sprintf("%s (<@%s>) ist verifiziert.", u.Name(), u.ID))
 	welcome := b.setting("channel.welcome")
 	text := "Richtig, willkommen! Du siehst jetzt den ganzen Server."
 	if welcome != "" {

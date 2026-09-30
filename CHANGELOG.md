@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Messages carry no emoji any more: status, control channel, whitelist and application lines are plain text, and the goal bar is drawn with block characters.
+- The admin API takes `"filter"`, a regular expression; only matching lines of a text answer come back.
+
 ## 0.4.0
 
 - The bot serves the website: it downloads each new release of `kronwerke/website` (`site.tar.gz`, checked against `SHA256SUMS`), unpacks it next to the old one and switches over. `!site` looks at once, `!status` shows the version. `KW_SITE_REPO` sets the repository, `off` turns it off.
