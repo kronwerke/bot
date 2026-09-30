@@ -53,6 +53,7 @@ Everything else the team might want to change (channel ids, roles, timings) is a
 | `internal/mcping` | Server List Ping for the status message |
 | `internal/store` | State in one JSON file, written atomically |
 | `internal/update` | Self update from GitHub releases |
+| `internal/site` | The website: downloads each new release of `kronwerke/website` and serves it |
 | `deploy/` | systemd unit, installer, rollback guard, example configuration |
 | `tools/rconcli` | RCON from the command line, for testing |
 | `tools/linkcli` | A stand-in for the bot that a launcher can dial, for testing |
@@ -93,6 +94,22 @@ In the control channel (team leads, and the bot's own account):
 | `!link`, `!link accept <fingerprint>`, `!link revoke <fingerprint>` | The server link and which launchers may connect |
 | `!mc status`, `start`, `stop`, `restart [update]`, `cmd`, `console [n]`, `logs [n] [file]`, `ls`, `cat` | The Minecraft server through its launcher |
 | `!update`, `!rollback`, `!restart` | Look for a release now, go back one version, restart |
+| `!site` | Look for a new website release now |
+
+## Over HTTP
+
+On `KW_HTTP_ADDR`, behind the reverse proxy:
+
+| Path | What |
+| --- | --- |
+| `/` | The website, from the latest release of `kronwerke/website` |
+| `GET /link` | The launcher's WebSocket |
+| `GET /api/status` | Public: server online, players, launcher state, goals |
+| `GET /api/admin/bot` | Admin: version, link, website version |
+| `POST /api/admin/link` | Admin: `{"op": "logs", "args": {"lines": 5000}}` and the other launcher operations (`status`, `console`, `logs`, `ls`, `read`, `command`, `start`, `stop`, `restart`, `write`, `delete`). Everything that changes the server is posted to the control channel |
+| `/healthz`, `/metrics` | Loopback only; the proxy does not pass them |
+
+The admin paths exist only with `KW_ADMIN_TOKEN` set and answer 404 to anyone without it.
 
 ## Planned
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- The bot serves the website: it downloads each new release of `kronwerke/website` (`site.tar.gz`, checked against `SHA256SUMS`), unpacks it next to the old one and switches over. `!site` looks at once, `!status` shows the version. `KW_SITE_REPO` sets the repository, `off` turns it off.
+- The admin API: `GET /api/admin/bot` and `POST /api/admin/link` pass whole logs, files and commands to the launcher. It exists only with `KW_ADMIN_TOKEN`, and everything that changes the server is posted to the control channel.
+- Caddy now passes everything but `/healthz` and `/metrics` to the bot (see docs/DEPLOY.md).
+
 ## 0.3.0
 
 - Commands are English: `/apply` instead of `/bewerben`, and `/whitelist add` takes `player` and `user`.

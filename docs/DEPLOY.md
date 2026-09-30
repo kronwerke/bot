@@ -83,18 +83,14 @@ Everything else is a setting, changed at run time in the control channel:
 
 Two ways, and the bot uses whichever is there, the link first.
 
-**The launcher (recommended).** The [Kronwerke launcher](https://github.com/kronwerke/launcher) runs on the server as its jar and dials in to the bot at `/link`. It needs no open port on the server and no API from the host. On kvm-45, Caddy passes the public name to the bot, only for the link and the API:
+**The launcher (recommended).** The [Kronwerke launcher](https://github.com/kronwerke/launcher) runs on the server as its jar and dials in to the bot at `/link`. It needs no open port on the server and no API from the host. On kvm-45, Caddy passes the public names to the bot, which answers the link, the API and the website; health and metrics stay on loopback:
 
 ```
-api.kronwerke.com {
+kronwerke.com, api.kronwerke.com {
 	import tls_cf
-	@bot path /link /api/*
-	handle @bot {
-		reverse_proxy 127.0.0.1:13030
-	}
-	handle {
-		respond 404
-	}
+	@private path /healthz /metrics
+	respond @private 404
+	reverse_proxy 127.0.0.1:13030
 }
 ```
 
@@ -119,6 +115,12 @@ KW_RCON_PASSWORD=<the same>
 and restart the bot. `!status` shows the Minecraft line, `!rcon list` answers.
 
 `KW_MC_ADDR` is worth setting either way: the status message and `/api/status` use it.
+
+## The website and the admin API
+
+The bot serves the latest release of `kronwerke/website` on `/`. A new tag there is live within `update.interval`, or at once with `!site`. `KW_SITE_REPO=off` turns it off.
+
+`KW_ADMIN_TOKEN` in `bot.env` turns on `/api/admin/...` (see the README). Generate it with `openssl rand -hex 32`, keep it in the vault, and restart the bot. Without it the paths do not exist.
 
 ## Updates
 
