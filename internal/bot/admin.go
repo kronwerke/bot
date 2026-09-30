@@ -124,8 +124,19 @@ func (b *Bot) adminLink(w http.ResponseWriter, r *http.Request) {
 }
 
 // filterLines keeps the lines of a text answer that match re, so a tool can ask for the
-// warnings of a long log without downloading all of it.
+// warnings of a long log without downloading all of it. An answer is either one text or
+// a list of lines (what the launcher sends for logs and console).
 func filterLines(raw json.RawMessage, re *regexp.Regexp) (json.RawMessage, error) {
+	var lines []string
+	if err := json.Unmarshal(raw, &lines); err == nil {
+		keep := []string{}
+		for _, line := range lines {
+			if re.MatchString(line) {
+				keep = append(keep, line)
+			}
+		}
+		return json.Marshal(keep)
+	}
 	var text string
 	if err := json.Unmarshal(raw, &text); err != nil {
 		return nil, fmt.Errorf("filter works only on text answers")

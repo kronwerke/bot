@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+- The admin API's `"filter"` also works on answers that are a list of lines, which is what the launcher sends for `logs` and `console`.
+
 ## 0.4.1
 
 - Messages carry no emoji any more: status, control channel, whitelist and application lines are plain text, and the goal bar is drawn with block characters.

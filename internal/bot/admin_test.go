@@ -56,9 +56,12 @@ func TestAdminAPINeedsTheTokenAndForwardsToTheLauncher(t *testing.T) {
 				continue
 			}
 			args, _ := m["args"].(map[string]any)
-			data := fmt.Sprintf("%v %v", m["op"], args["cmd"])
-			if m["op"] == "logs" {
-				data = "[INFO] fine\n[WARN] odd\n[ERROR] bad\n[INFO] fine again"
+			var data any = fmt.Sprintf("%v %v", m["op"], args["cmd"])
+			switch m["op"] {
+			case "logs":
+				data = []string{"[INFO] fine", "[WARN] odd", "[ERROR] bad", "[INFO] fine again"}
+			case "read":
+				data = "[INFO] fine\n[WARN] odd"
 			}
 			out, _ := json.Marshal(map[string]any{"type": "res", "id": m["id"], "ok": true, "data": data})
 			c.WriteText(out)
@@ -96,8 +99,12 @@ func TestAdminAPINeedsTheTokenAndForwardsToTheLauncher(t *testing.T) {
 		t.Fatalf("command: %d %s", code, body)
 	}
 	code, body = do("POST", "/api/admin/link", "s3cret-token", `{"op":"logs","filter":"WARN|ERROR"}`)
-	if code != 200 || body != `{"data":"[WARN] odd\n[ERROR] bad"}`+"\n" {
+	if code != 200 || body != `{"data":["[WARN] odd","[ERROR] bad"]}`+"\n" {
 		t.Fatalf("filtered logs: %d %q", code, body)
+	}
+	code, body = do("POST", "/api/admin/link", "s3cret-token", `{"op":"read","filter":"WARN"}`)
+	if code != 200 || body != `{"data":"[WARN] odd"}`+"\n" {
+		t.Fatalf("filtered text: %d %q", code, body)
 	}
 	if code, _ := do("POST", "/api/admin/link", "s3cret-token", `{"op":"logs","filter":"("}`); code != http.StatusBadRequest {
 		t.Fatalf("a broken filter: %d, want 400", code)
