@@ -83,6 +83,9 @@ func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 	if i, ok := b.link.Connected(); ok {
 		server["state"] = i.State
 		server["pack"] = i.Pack
+		if p := b.packNow.Load(); p != nil && *p != "" {
+			server["pack"] = *p
+		}
 	}
 	out := map[string]any{"server": server}
 	if goals != nil && time.Since(goalsAt) < 10*time.Minute {

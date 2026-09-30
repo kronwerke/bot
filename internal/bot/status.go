@@ -101,12 +101,28 @@ func (b *Bot) pingViaLink() (mcping.Status, error) {
 	if i.State != "running" {
 		return mcping.Status{}, fmt.Errorf("Minecraft %s", stateWord(i.State))
 	}
-	out, err := b.console("list")
+	// the launcher's status has the pack that runs now (the link info has the one from
+	// when it connected) and the answer to "list"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	raw, err := b.link.Request(ctx, "status", nil)
 	if err != nil {
 		return mcping.Status{}, err
 	}
-	st, err := parseList(out)
-	st.Version = "Pack " + i.Pack
+	var s struct {
+		State   string `json:"state"`
+		Pack    string `json:"pack"`
+		Players string `json:"players"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return mcping.Status{}, err
+	}
+	if s.State != "running" {
+		return mcping.Status{}, fmt.Errorf("Minecraft %s", stateWord(s.State))
+	}
+	st, err := parseList(s.Players)
+	st.Version = "Pack " + s.Pack
+	b.packNow.Store(&s.Pack)
 	return st, err
 }
 
