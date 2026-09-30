@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5
+
+- After Discord asks for a reconnect, which it does every hour or two, the bot resumes at once. It used to wait longer after each one, up to a minute, and buttons like the captcha that were pressed in that minute failed with "Unknown interaction". Only connections that fail again and again back off now.
+
 ## 0.4.4
 
 - The pack version on the website and in the status message is the one that runs now, not the one from when the launcher connected.

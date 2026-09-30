@@ -73,8 +73,14 @@ func (g *Gateway) Reconnects() int64 { return g.reconnects.Load() }
 
 // Run connects and stays connected until ctx ends or a fatal close code arrives.
 func (g *Gateway) Run(ctx context.Context) error {
-	backoff := time.Second
+	// A session that ran for a while ended normally (Discord asks every bot to reconnect
+	// now and then): resume right away. Only connections that fail again and again wait
+	// longer, up to a minute. Waiting after a healthy session made interactions that came
+	// in meanwhile expire before the bot could answer them.
+	const healthy = 30 * time.Second
+	backoff := time.Duration(0)
 	for {
+		started := time.Now()
 		err := g.session(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -83,18 +89,19 @@ func (g *Gateway) Run(ctx context.Context) error {
 		if errors.As(err, &fe) {
 			return err
 		}
+		if err == nil || time.Since(started) > healthy {
+			backoff = 0
+		} else if backoff == 0 {
+			backoff = time.Second
+		} else if backoff < time.Minute {
+			backoff *= 2
+		}
 		g.reconnects.Add(1)
 		g.Log.Warn("gateway disconnected, reconnecting", "err", err, "resume", g.sessionID != "", "in", backoff)
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
 			return ctx.Err()
-		}
-		if backoff < time.Minute {
-			backoff *= 2
-		}
-		if err == nil {
-			backoff = time.Second
 		}
 	}
 }
