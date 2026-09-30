@@ -111,7 +111,7 @@ func (b *Bot) submitApplication(ctx context.Context, i *discord.Interaction) {
 	}
 	b.store.PutApplication(store.Application{UserID: u.ID, ChannelID: ch.ID, Status: "open", Created: time.Now()})
 	b.stats.applications.Add(1)
-	b.audit(ctx, fmt.Sprintf("📝 Neue Streamer-Bewerbung von %s: <#%s>", u.Name(), ch.ID))
+	b.audit(ctx, fmt.Sprintf("Neue Streamer-Bewerbung von %s: <#%s>", u.Name(), ch.ID))
 	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("Danke! Deine Bewerbung liegt in <#%s>.", ch.ID)})
 }
 
@@ -135,11 +135,11 @@ func (b *Bot) decideApplication(ctx context.Context, i *discord.Interaction, use
 			return
 		}
 		a.Status = "accepted"
-		text = fmt.Sprintf("✅ <@%s>, du bist dabei! %s hat deine Bewerbung angenommen. Als Nächstes: `/link` mit deinem Minecraft-Namen, damit kommst du auf die Whitelist. Dann trägst du mit `/whitelist add` deine Leute ein.", userID, who.Name())
+		text = fmt.Sprintf("<@%s>, du bist dabei! %s hat deine Bewerbung angenommen. Als Nächstes: `/link` mit deinem Minecraft-Namen, damit kommst du auf die Whitelist. Dann trägst du mit `/whitelist add` deine Leute ein.", userID, who.Name())
 		if name := b.store.Link(userID); name != "" {
 			if _, has := b.store.Grant(userID); !has {
 				if m, err := b.rest.Member(ctx, b.guild(), userID); err == nil && m.User != nil && b.grant(ctx, *m.User, name, store.KindStreamer, -1) == nil {
-					text = fmt.Sprintf("✅ <@%s>, du bist dabei! %s hat deine Bewerbung angenommen. **%s** ist auf der Whitelist, und mit `/whitelist add` trägst du deine Leute ein.", userID, who.Name(), name)
+					text = fmt.Sprintf("<@%s>, du bist dabei! %s hat deine Bewerbung angenommen. **%s** ist auf der Whitelist, und mit `/whitelist add` trägst du deine Leute ein.", userID, who.Name(), name)
 				}
 			}
 		}
@@ -174,7 +174,7 @@ func (b *Bot) applicationsCategory(ctx context.Context) (string, error) {
 			ow = append(ow, discord.Overwrite{ID: r, Type: 0, Allow: view, Deny: "0"})
 		}
 	}
-	c, err := b.rest.CreateChannel(ctx, b.guild(), discord.Channel{Name: "📝 | Bewerbungen", Type: 4, PermissionOverwrites: ow}, "Category for streamer applications")
+	c, err := b.rest.CreateChannel(ctx, b.guild(), discord.Channel{Name: "Bewerbungen", Type: 4, PermissionOverwrites: ow}, "Category for streamer applications")
 	if err != nil {
 		return "", err
 	}

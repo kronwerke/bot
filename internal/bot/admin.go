@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -18,6 +19,7 @@ import (
 // exist without it.
 //
 //	POST /api/admin/link  {"op": "logs", "args": {"lines": 5000}}  ->  {"data": ...}
+//	POST /api/admin/link  {"op": "logs", "args": {...}, "filter": "WARN|ERROR"}
 //	GET  /api/admin/bot                                            ->  version, link, site
 //
 // Everything that changes the server (commands, start, stop, writes) is also posted to
@@ -72,8 +74,9 @@ func (b *Bot) adminLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Op   string          `json:"op"`
-		Args json.RawMessage `json:"args"`
+		Op     string          `json:"op"`
+		Args   json.RawMessage `json:"args"`
+		Filter string          `json:"filter"` // keeps only matching lines of a text answer
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 32<<20)).Decode(&in); err != nil {
 		adminJSON(w, http.StatusBadRequest, map[string]string{"error": "body: " + err.Error()})
@@ -83,6 +86,14 @@ func (b *Bot) adminLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		adminJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown op " + in.Op})
 		return
+	}
+	var filter *regexp.Regexp
+	if in.Filter != "" {
+		var err error
+		if filter, err = regexp.Compile(in.Filter); err != nil {
+			adminJSON(w, http.StatusBadRequest, map[string]string{"error": "filter: " + err.Error()})
+			return
+		}
 	}
 	if _, ok := b.link.Connected(); !ok {
 		adminJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no Minecraft server connected"})
@@ -97,13 +108,35 @@ func (b *Bot) adminLink(w http.ResponseWriter, r *http.Request) {
 	raw, err := b.link.Request(ctx, in.Op, args)
 	b.log.Info("admin api", "op", in.Op, "err", err)
 	if mutating {
-		b.control(context.Background(), "🛠 Admin-API: "+describeOp(in.Op, in.Args, err))
+		b.control(context.Background(), "Admin-API: "+describeOp(in.Op, in.Args, err))
 	}
 	if err != nil {
 		adminJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
+	if filter != nil {
+		if raw, err = filterLines(raw, filter); err != nil {
+			adminJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 	adminJSON(w, http.StatusOK, map[string]json.RawMessage{"data": raw})
+}
+
+// filterLines keeps the lines of a text answer that match re, so a tool can ask for the
+// warnings of a long log without downloading all of it.
+func filterLines(raw json.RawMessage, re *regexp.Regexp) (json.RawMessage, error) {
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return nil, fmt.Errorf("filter works only on text answers")
+	}
+	var keep []string
+	for _, line := range strings.Split(text, "\n") {
+		if re.MatchString(line) {
+			keep = append(keep, line)
+		}
+	}
+	return json.Marshal(strings.Join(keep, "\n"))
 }
 
 // describeOp is the control channel line for a mutating request. File contents are not

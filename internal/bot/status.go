@@ -28,9 +28,9 @@ func (b *Bot) refreshStatus(ctx context.Context) {
 		b.statusMu.Unlock()
 		if (was.err == nil) != (err == nil) && !was.at.IsZero() {
 			if err != nil {
-				b.audit(ctx, "🔴 Minecraft-Server nicht erreichbar: "+err.Error())
+				b.audit(ctx, "Minecraft-Server nicht erreichbar: "+err.Error())
 			} else {
-				b.audit(ctx, "🟢 Minecraft-Server wieder erreichbar.")
+				b.audit(ctx, "Minecraft-Server wieder erreichbar.")
 			}
 		}
 		b.postStatus(ctx)
@@ -49,13 +49,13 @@ func (b *Bot) postStatus(ctx context.Context) {
 
 	var e discord.Embed
 	if p.err != nil {
-		e = discord.Embed{Title: "🔴 Server offline", Description: "Der Minecraft-Server antwortet gerade nicht.", Color: 0xE74C3C}
+		e = discord.Embed{Title: "Server offline", Description: "Der Minecraft-Server antwortet gerade nicht.", Color: 0xE74C3C}
 	} else {
 		desc := fmt.Sprintf("**%d / %d** Spieler online", p.status.Online, p.status.Max)
 		if len(p.status.Players) > 0 {
 			desc += "\n" + strings.Join(p.status.Players, ", ")
 		}
-		e = discord.Embed{Title: "🟢 Server online", Description: desc, Color: 0x2ECC71,
+		e = discord.Embed{Title: "Server online", Description: desc, Color: 0x2ECC71,
 			Fields: []discord.EmbedField{{Name: "Version", Value: p.status.Version, Inline: true}}}
 	}
 	sig := e.Title + "|" + e.Description
@@ -201,5 +201,5 @@ func (b *Bot) postProgress(ctx context.Context) {
 func progressBar(pct int) string {
 	pct = max(0, min(100, pct))
 	full := pct / 10
-	return strings.Repeat("🟨", full) + strings.Repeat("⬛", 10-full)
+	return "`" + strings.Repeat("█", full) + strings.Repeat("░", 10-full) + "`"
 }

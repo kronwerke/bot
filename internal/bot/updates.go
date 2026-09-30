@@ -99,7 +99,7 @@ func (b *Bot) syncSite(ctx context.Context, verbose bool) string {
 		b.siteMu.Lock()
 		b.siteErr = ""
 		b.siteMu.Unlock()
-		msg := "🌐 Website " + tag + " ist live."
+		msg := "Website " + tag + " ist live."
 		if !verbose {
 			b.control(ctx, msg)
 		}

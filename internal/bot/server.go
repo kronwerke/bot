@@ -27,7 +27,7 @@ func (b *Bot) newHub() *link.Hub {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()
 				b.events.add("link: %s connected from %s (launcher %s, pack %s, %s)", i.Name, i.Remote, i.Launcher, i.Pack, i.State)
-				b.control(ctx, fmt.Sprintf("🔌 Minecraft-Server **%s** verbunden (Launcher %s, Pack %s, %s).", i.Name, i.Launcher, i.Pack, stateWord(i.State)))
+				b.control(ctx, fmt.Sprintf("Minecraft-Server **%s** verbunden (Launcher %s, Pack %s, %s).", i.Name, i.Launcher, i.Pack, stateWord(i.State)))
 				if i.State == "running" {
 					b.syncAfterConnect(ctx)
 				}
@@ -36,13 +36,13 @@ func (b *Bot) newHub() *link.Hub {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				b.events.add("link: %s disconnected: %v", i.Name, err)
-				b.control(ctx, fmt.Sprintf("🔌 Verbindung zu **%s** getrennt.", i.Name))
+				b.control(ctx, fmt.Sprintf("Verbindung zu **%s** getrennt.", i.Name))
 			},
 			Pending: func(i link.Info) {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				b.events.add("link: %s from %s waits, fingerprint %s", i.Name, i.Remote, i.Fingerprint)
-				b.control(ctx, fmt.Sprintf("🔑 Ein Minecraft-Server will sich verbinden: **%s** von `%s`, Launcher %s, Fingerprint `%s`.\nPasst der Fingerprint zur Konsole des Servers: `!link accept %s`",
+				b.control(ctx, fmt.Sprintf("Ein Minecraft-Server will sich verbinden: **%s** von `%s`, Launcher %s, Fingerprint `%s`.\nPasst der Fingerprint zur Konsole des Servers: `!link accept %s`",
 					i.Name, i.Remote, i.Launcher, i.Fingerprint, i.Fingerprint))
 			},
 			State: func(i link.Info, state, detail string) {
@@ -51,12 +51,12 @@ func (b *Bot) newHub() *link.Hub {
 				b.events.add("minecraft %s %s", state, detail)
 				switch state {
 				case "running":
-					b.control(ctx, "🟢 Minecraft läuft.")
+					b.control(ctx, "Minecraft läuft.")
 					b.syncAfterConnect(ctx)
 				case "crashed":
-					b.control(ctx, "💥 Minecraft ist abgestürzt: "+detail+". `!mc logs 60` zeigt das Ende des Logs.")
+					b.control(ctx, "Minecraft ist abgestürzt: "+detail+". `!mc logs 60` zeigt das Ende des Logs.")
 				case "stopped":
-					b.control(ctx, "⏹️ Minecraft ist gestoppt.")
+					b.control(ctx, "Minecraft ist gestoppt.")
 				}
 			},
 		},
@@ -174,7 +174,7 @@ func (b *Bot) linkControl(ctx context.Context, rest string, by string) string {
 		if err := b.store.PutLinkKey(arg, store.LinkKey{Hash: hash, Name: info.Name, Accepted: time.Now(), By: by}); err != nil {
 			return "Speichern ging nicht: " + err.Error()
 		}
-		b.audit(ctx, fmt.Sprintf("🔑 Minecraft-Server %s (`%s`) angenommen von %s.", info.Name, arg, by))
+		b.audit(ctx, fmt.Sprintf("Minecraft-Server %s (`%s`) angenommen von %s.", info.Name, arg, by))
 		return fmt.Sprintf("Angenommen. **%s** verbindet sich gleich neu.", info.Name)
 	case "revoke":
 		ok, err := b.store.DeleteLinkKey(arg)
@@ -185,7 +185,7 @@ func (b *Bot) linkControl(ctx context.Context, rest string, by string) string {
 			return "Diesen Fingerprint gibt es nicht."
 		}
 		b.link.Kick(arg)
-		b.audit(ctx, fmt.Sprintf("🔑 Minecraft-Server `%s` entfernt von %s.", arg, by))
+		b.audit(ctx, fmt.Sprintf("Minecraft-Server `%s` entfernt von %s.", arg, by))
 		return "Entfernt und getrennt."
 	}
 	return "So: `!link`, `!link accept <fingerprint>`, `!link revoke <fingerprint>`"
