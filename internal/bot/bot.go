@@ -18,6 +18,7 @@ import (
 	"github.com/kronwerke/bot/internal/discord"
 	"github.com/kronwerke/bot/internal/link"
 	"github.com/kronwerke/bot/internal/rcon"
+	"github.com/kronwerke/bot/internal/site"
 	"github.com/kronwerke/bot/internal/store"
 	"github.com/kronwerke/bot/internal/update"
 )
@@ -33,6 +34,8 @@ type Config struct {
 	Version       string
 	Updater       *update.Updater // nil disables self updates
 	APIBase       string          // Discord REST base for tests; empty is the real API
+	AdminToken    string          // bearer token of the admin API; empty turns it off
+	Site          *site.Site      // the website served on /; nil serves nothing
 }
 
 // ErrRestart asks main to exit so systemd starts the (new) binary.
@@ -47,6 +50,7 @@ type Bot struct {
 	store   *store.Store
 	rcon    *rcon.Client
 	link    *link.Hub
+	site    *site.Site
 	started time.Time
 
 	me      discord.User
@@ -65,6 +69,9 @@ type Bot struct {
 	apiMu   sync.Mutex
 	goals   json.RawMessage // the last "kw admin goals json", for the API
 	goalsAt time.Time
+
+	siteMu  sync.Mutex
+	siteErr string // the last website sync error, reported once
 }
 
 type stats struct {
@@ -99,6 +106,10 @@ func New(cfg Config, log *slog.Logger) (*Bot, error) {
 		b.rcon = &rcon.Client{Addr: cfg.RCONAddr, Password: cfg.RCONPassword}
 	}
 	b.link = b.newHub()
+	b.site = cfg.Site
+	if b.site != nil {
+		b.site.Load()
+	}
 	return b, nil
 }
 
@@ -112,6 +123,9 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.serveHTTP(ctx)
 	if b.cfg.Updater != nil {
 		go b.updateLoop(ctx)
+	}
+	if b.site != nil {
+		go b.siteLoop(ctx)
 	}
 	go b.connect(ctx)
 

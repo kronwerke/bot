@@ -18,6 +18,7 @@ const controlHelp = "**Befehle im Kontrollkanal**\n" +
 	"`!update` sofort nach einem Release schauen und installieren\n" +
 	"`!rollback` zurück auf die vorige Version\n" +
 	"`!restart` neu starten\n" +
+	"`!site` sofort nach einem Website-Release schauen\n" +
 	"`!get [präfix]`, `!set key wert`, `!unset key` Einstellungen\n" +
 	"`!members` Rollen zählen, Unverifizierte zeigen\n" +
 	"`!verify-sync` unverified an alle ohne Mitglied\n" +
@@ -103,6 +104,13 @@ func (b *Bot) runControl(ctx context.Context, line, by string) string {
 	case "!restart":
 		b.requestRestart("auf Befehl")
 		return ""
+	case "!site":
+		if b.site == nil {
+			return "Die Website ist aus (KW_SITE_REPO leer)."
+		}
+		c, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		defer cancel()
+		return b.syncSite(c, true)
 	case "!get":
 		return b.settingsText(rest)
 	case "!set":
@@ -244,6 +252,16 @@ func (b *Bot) statusText() string {
 		lines = append(lines, fmt.Sprintf("Launcher: %s verbunden, %s, Pack %s", i.Name, stateWord(i.State), i.Pack))
 	} else {
 		lines = append(lines, "Launcher: nicht verbunden")
+	}
+	if b.site != nil {
+		if t := b.site.Tag(); t != "" {
+			lines = append(lines, "Website: "+t)
+		} else {
+			lines = append(lines, "Website: noch kein Release")
+		}
+	}
+	if b.cfg.AdminToken != "" {
+		lines = append(lines, "Admin-API: an")
 	}
 	if b.rcon == nil {
 		lines = append(lines, "RCON: nicht konfiguriert")
