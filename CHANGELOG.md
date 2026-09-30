@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+
+- The pack version on the website and in the status message is the one that runs now, not the one from when the launcher connected.
+
 ## 0.4.3
 
 - Without `KW_MC_ADDR` the status comes from the launcher: online while Minecraft runs, players from `list`. The website and the status message showed the server as offline before.

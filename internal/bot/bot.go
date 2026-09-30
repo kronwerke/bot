@@ -72,6 +72,8 @@ type Bot struct {
 
 	siteMu  sync.Mutex
 	siteErr string // the last website sync error, reported once
+
+	packNow atomic.Pointer[string] // the pack version the launcher reported last
 }
 
 type stats struct {
