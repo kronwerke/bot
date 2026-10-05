@@ -44,7 +44,61 @@ func (b *Bot) refreshStatus(ctx context.Context) {
 		}
 		b.postStatus(ctx)
 	}
+	b.refreshSeason()
 	b.postProgress(ctx)
+}
+
+// seasonView is what Kronwerke Core prints for "kw admin season json". Before the season
+// the server is a work in progress: the status message, the presence and the API say so
+// instead of counting players.
+type seasonView struct {
+	Running   bool  `json:"running"`
+	Number    int   `json:"number"`
+	StartedAt int64 `json:"startedAt"`
+}
+
+func (b *Bot) refreshSeason() {
+	if !b.serverConnected() {
+		return
+	}
+	out, err := b.serverCommand("kw admin season json")
+	if err != nil {
+		b.events.add("season: %v", err)
+		return
+	}
+	var sv seasonView
+	if err := json.Unmarshal([]byte(out), &sv); err != nil {
+		b.events.add("season: bad json: %v", err)
+		return
+	}
+	b.apiMu.Lock()
+	b.season = &sv
+	b.apiMu.Unlock()
+	b.updatePresence()
+}
+
+// wip reports whether the season has not started yet. Without an answer from Core it
+// counts as started, so an older Core keeps the player count.
+func (b *Bot) wip() bool {
+	b.apiMu.Lock()
+	defer b.apiMu.Unlock()
+	return b.season != nil && !b.season.Running
+}
+
+func (b *Bot) updatePresence() {
+	text := "Season 2, Start Mitte Januar"
+	if b.wip() {
+		text = "Work in Progress"
+	} else if b.season != nil && b.season.Running {
+		text = "Season 2 läuft"
+	}
+	if text == b.presence {
+		return
+	}
+	if gw := b.gw.Load(); gw != nil {
+		gw.UpdatePresence(text)
+		b.presence = text
+	}
 }
 
 func (b *Bot) postStatus(ctx context.Context) {
@@ -57,7 +111,12 @@ func (b *Bot) postStatus(ctx context.Context) {
 	b.statusMu.Unlock()
 
 	var e discord.Embed
-	if p.err != nil {
+	if b.wip() {
+		e = discord.Embed{Title: "Work in Progress",
+			Description: "Kronwerke Season 2 wird gerade gebaut. Die Beta läuft im Dezember, der Start ist Mitte Januar.\n" +
+				"Bis dahin testet das Team auf dem Server. Was gerade im Obelisken landet, steht im Fortschritt und auf kronwerke.com.",
+			Color: 0x9A6FD6}
+	} else if p.err != nil {
 		e = discord.Embed{Title: "Server offline", Description: "Der Minecraft-Server antwortet gerade nicht.", Color: 0xE74C3C}
 	} else {
 		desc := fmt.Sprintf("**%d / %d** Spieler online", p.status.Online, p.status.Max)

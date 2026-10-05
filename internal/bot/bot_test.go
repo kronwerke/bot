@@ -508,7 +508,7 @@ func TestLinkGivesStreamersAndSeason1PlayersAPlaceAndLeavingTakesItBack(t *testi
 	want := []string{"kw admin grant Anna_MC 2", "kw admin grant CarlaLive", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
 	var got []string
 	for _, c := range rc.commands() {
-		if c != "kw admin goals json" { // the status loop fetches goals for the API
+		if c != "kw admin goals json" && c != "kw admin season json" { // the status loop fetches these for the API
 			got = append(got, c)
 		}
 	}

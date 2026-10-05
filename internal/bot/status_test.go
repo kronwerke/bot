@@ -15,3 +15,18 @@ func TestParseList(t *testing.T) {
 		t.Fatal("no error for a strange answer")
 	}
 }
+
+func TestWIPOnlyBeforeTheSeason(t *testing.T) {
+	b := &Bot{}
+	if b.wip() {
+		t.Fatal("work in progress without an answer from Core")
+	}
+	b.season = &seasonView{Running: false}
+	if !b.wip() {
+		t.Fatal("not work in progress during the preparation")
+	}
+	b.season = &seasonView{Running: true, Number: 1}
+	if b.wip() {
+		t.Fatal("work in progress while the season runs")
+	}
+}

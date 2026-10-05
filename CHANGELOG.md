@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.7
+
+- Before the season starts the server is a work in progress: the status message says so instead of counting players, the bot's status line reads "Work in Progress", and `/api/status` has a `season` field (`running`, `number`, `startedAt`) for the website. The bot asks Kronwerke Core with `kw admin season json`; an older Core that does not know it keeps the player count.
+- The status line no longer uses a middle dot.
+
 ## 0.4.6
 
 - After Discord asks for a reconnect, which it does every hour or two, the bot resumes at once. It used to wait longer after each one, up to a minute, and buttons like the captcha that were pressed in that minute failed with "Unknown interaction". Only connections that fail again and again back off now.

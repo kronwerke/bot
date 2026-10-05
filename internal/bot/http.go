@@ -72,7 +72,7 @@ func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 	p := b.lastPing
 	b.statusMu.Unlock()
 	b.apiMu.Lock()
-	goals, goalsAt := b.goals, b.goalsAt
+	goals, goalsAt, season := b.goals, b.goalsAt, b.season
 	b.apiMu.Unlock()
 
 	server := map[string]any{"online": false}
@@ -88,6 +88,9 @@ func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := map[string]any{"server": server}
+	if season != nil {
+		out["season"] = season
+	}
 	if goals != nil && time.Since(goalsAt) < 10*time.Minute {
 		out["goals"] = goals
 	}

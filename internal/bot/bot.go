@@ -66,9 +66,11 @@ type Bot struct {
 	updateMu  sync.Mutex
 	lastCheck checkResult
 
-	apiMu   sync.Mutex
-	goals   json.RawMessage // the last "kw admin goals json", for the API
-	goalsAt time.Time
+	apiMu    sync.Mutex
+	goals    json.RawMessage // the last "kw admin goals json", for the API
+	goalsAt  time.Time
+	season   *seasonView // the last "kw admin season json"; nil while Core does not answer it
+	presence string      // the status line the gateway shows right now
 
 	siteMu  sync.Mutex
 	siteErr string // the last website sync error, reported once
@@ -271,9 +273,8 @@ func (b *Bot) onReady(ctx context.Context, data json.RawMessage) {
 		b.fail(ctx, "Slash commands konnten nicht registriert werden", err)
 	}
 	b.ensureVerifyPanel(ctx)
-	if gw := b.gw.Load(); gw != nil {
-		gw.UpdatePresence("Season 2 · Mitte Januar")
-	}
+	b.presence = ""
+	b.updatePresence()
 	b.control(ctx, fmt.Sprintf("Online: %s. Befehle: `!help`", b.cfg.Version))
 	b.refreshStatus(ctx)
 }

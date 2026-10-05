@@ -104,7 +104,7 @@ On `KW_HTTP_ADDR`, behind the reverse proxy:
 | --- | --- |
 | `/` | The website, from the latest release of `kronwerke/website` |
 | `GET /link` | The launcher's WebSocket |
-| `GET /api/status` | Public: server online, players, launcher state, goals |
+| `GET /api/status` | Public: server online, players, launcher state, goals with their recent deposits, and the season (`running` is false while the server is a work in progress) |
 | `GET /api/admin/bot` | Admin: version, link, website version |
 | `POST /api/admin/link` | Admin: `{"op": "logs", "args": {"lines": 5000}}` and the other launcher operations (`status`, `console`, `logs`, `ls`, `read`, `command`, `start`, `stop`, `restart`, `write`, `delete`). `"filter": "<regexp>"` keeps only the matching lines of a text answer. Everything that changes the server is posted to the control channel |
 | `/healthz`, `/metrics` | Loopback only; the proxy does not pass them |
