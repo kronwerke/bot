@@ -55,6 +55,10 @@ type seasonView struct {
 	Running   bool  `json:"running"`
 	Number    int   `json:"number"`
 	StartedAt int64 `json:"startedAt"`
+	// the obelisk's stage (completed goals) and whether it sleeps after a day without a gift;
+	// Core 0.13.3 and later print them, older ones leave the zero values
+	Tier       int  `json:"tier"`
+	Slumbering bool `json:"slumbering"`
 }
 
 func (b *Bot) refreshSeason() {

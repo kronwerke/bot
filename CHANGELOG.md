@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.8
+
+- `/api/status` passes the obelisk's stage and sleep on in `season` (`tier`, `slumbering`), as Kronwerke Core 0.13.3 prints them; the website shows them.
+
 ## 0.4.7
 
 - Before the season starts the server is a work in progress: the status message says so instead of counting players, the bot's status line reads "Work in Progress", and `/api/status` has a `season` field (`running`, `number`, `startedAt`) for the website. The bot asks Kronwerke Core with `kw admin season json`; an older Core that does not know it keeps the player count.
