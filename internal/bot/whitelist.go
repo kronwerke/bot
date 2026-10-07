@@ -50,7 +50,9 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 	kind, slots := b.placeFor(i.Member)
 	if kind == "" {
 		b.store.SetLink(u.ID, name)
+		b.store.SetLinkName(u.ID, u.Name(), time.Now())
 		b.events.add("link %s -> %s", u.Username, name)
+		go b.pushLinks()
 		b.reply(ctx, i, fmt.Sprintf("Dein Minecraft-Name ist jetzt **%s**. Auf die Whitelist kommst du, wenn dir ein Streamer einen Platz gibt.", name))
 		return
 	}
@@ -66,7 +68,9 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		}
 	}
 	b.store.SetLink(u.ID, name)
+	b.store.SetLinkName(u.ID, u.Name(), time.Now())
 	b.events.add("link %s -> %s", u.Username, name)
+	defer func() { go b.pushLinks() }()
 	if err := b.grant(ctx, u, name, kind, slots); err != nil {
 		if errors.Is(err, errNoServer) {
 			b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf(
@@ -313,6 +317,7 @@ func (b *Bot) ungrant(ctx context.Context, g store.Grant, why string) error {
 		return err
 	}
 	b.store.DeleteGrant(g.DiscordID)
+	go b.pushLinks()
 	if role := b.setting("role.player"); role != "" && len(b.store.InvitesOf(g.DiscordID)) == 0 {
 		b.rest.RemoveRole(ctx, b.guild(), g.DiscordID, role, "Own whitelist place removed")
 	}

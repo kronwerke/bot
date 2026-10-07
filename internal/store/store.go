@@ -80,6 +80,8 @@ type data struct {
 	Verified     map[string]time.Time   `json:"verified"`
 	Grants       map[string]Grant       `json:"grants"`    // discord id -> grant
 	LinkKeys     map[string]LinkKey     `json:"link_keys"` // fingerprint -> key
+	Names        map[string]string      `json:"names"`     // discord id -> name shown on Discord, as of the last /link
+	LinkedAt     map[string]time.Time   `json:"linked_at"` // discord id -> when /link was last used
 }
 
 // Store is safe for concurrent use.
@@ -130,6 +132,12 @@ func (s *Store) init() {
 	}
 	if s.d.Verified == nil {
 		s.d.Verified = map[string]time.Time{}
+	}
+	if s.d.Names == nil {
+		s.d.Names = map[string]string{}
+	}
+	if s.d.LinkedAt == nil {
+		s.d.LinkedAt = map[string]time.Time{}
 	}
 	if s.d.Grants == nil {
 		s.d.Grants = map[string]Grant{}
@@ -292,6 +300,44 @@ func (s *Store) Applications() (out []Application) {
 func (s *Store) Link(discordID string) (mc string) {
 	s.view(func(d *data) { mc = d.Links[discordID] })
 	return
+}
+
+// LinkedMember is a member who told their Minecraft name with /link.
+type LinkedMember struct {
+	DiscordID string    `json:"discord_id"`
+	Name      string    `json:"discord_name"`
+	Player    string    `json:"player"`
+	Kind      string    `json:"kind"` // streamer, season1, or empty without a place of their own
+	At        time.Time `json:"at"`
+}
+
+// Linked lists every member with a Minecraft name, newest first.
+func (s *Store) Linked() (out []LinkedMember) {
+	s.view(func(d *data) {
+		for id, mc := range d.Links {
+			m := LinkedMember{DiscordID: id, Name: d.Names[id], Player: mc, At: d.LinkedAt[id]}
+			if g, ok := d.Grants[id]; ok {
+				m.Kind = g.Kind
+				if m.Kind == "" {
+					m.Kind = KindSeason1
+				}
+				if m.At.IsZero() {
+					m.At = g.Created
+				}
+			}
+			out = append(out, m)
+		}
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return
+}
+
+// SetLinkName keeps the member's Discord name and when they linked, for the console.
+func (s *Store) SetLinkName(discordID, name string, at time.Time) error {
+	return s.update(func(d *data) {
+		d.Names[discordID] = name
+		d.LinkedAt[discordID] = at
+	})
 }
 
 func (s *Store) SetLink(discordID, mc string) error {

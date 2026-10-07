@@ -31,6 +31,7 @@ func (b *Bot) newHub() *link.Hub {
 				if i.State == "running" {
 					b.syncAfterConnect(ctx)
 				}
+				go b.pushLinks()
 			},
 			Disconnected: func(i link.Info, err error) {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2
+
+- Members who use `/link` are passed to the launcher (Minecraft name, Discord name, streamer or Season 1, when), on every change and when the launcher connects, so its console shows them next to their places.
+
 ## 0.5.1
 
 - The CurseForge proxy's routes carry their methods; 0.5.0 stopped at start with a key set, because a bare path next to the website's route makes Go's router panic.
