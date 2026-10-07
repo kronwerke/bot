@@ -51,6 +51,9 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 	mux.HandleFunc("GET /api/status", b.apiStatus)
 	mux.HandleFunc("GET /api/admin/bot", b.adminBot)
 	mux.HandleFunc("POST /api/admin/link", b.adminLink)
+	if b.cfg.CurseForgeKey != "" {
+		mux.Handle("/api/curseforge/", newCurseProxy(b.cfg.CurseForgeKey))
+	}
 	if b.site != nil {
 		mux.Handle("GET /", b.site.Handler())
 	}

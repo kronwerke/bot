@@ -36,6 +36,7 @@ type Config struct {
 	APIBase       string          // Discord REST base for tests; empty is the real API
 	AdminToken    string          // bearer token of the admin API; empty turns it off
 	Site          *site.Site      // the website served on /; nil serves nothing
+	CurseForgeKey string          // CurseForge API key for the proxy; empty turns it off
 }
 
 // ErrRestart asks main to exit so systemd starts the (new) binary.

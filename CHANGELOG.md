@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+- A CurseForge proxy at `/api/curseforge/v1/...` for the launcher's console: it adds the key from `KW_CURSEFORGE_KEY`, so the key never reaches a launcher. Only fingerprint matching, mod info, Minecraft search and files pass; 300 requests per address in ten minutes; reads are kept for ten minutes. Without the key the path does not exist.
+
 ## 0.4.8
 
 - `/api/status` passes the obelisk's stage and sleep on in `season` (`tier`, `slumbering`), as Kronwerke Core 0.13.3 prints them; the website shows them.

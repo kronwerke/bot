@@ -87,6 +87,7 @@ func config() (bot.Config, error) {
 		Version:       version,
 		APIBase:       os.Getenv("KW_DISCORD_API"), // tests only
 		AdminToken:    strings.TrimSpace(os.Getenv("KW_ADMIN_TOKEN")),
+		CurseForgeKey: strings.TrimSpace(os.Getenv("KW_CURSEFORGE_KEY")),
 	}
 	if repo := env("KW_SITE_REPO", "kronwerke/website"); repo != "off" {
 		cfg.Site = &site.Site{

@@ -120,6 +120,8 @@ and restart the bot. `!status` shows the Minecraft line, `!rcon list` answers.
 
 The bot serves the latest release of `kronwerke/website` on `/`. A new tag there is live within `update.interval`, or at once with `!site`. `KW_SITE_REPO=off` turns it off.
 
+`KW_CURSEFORGE_KEY` in `bot.env` turns on the CurseForge proxy for the launcher's console (`/api/curseforge/...`); the key stays on this machine.
+
 `KW_ADMIN_TOKEN` in `bot.env` turns on `/api/admin/...` (see the README). Generate it with `openssl rand -hex 32`, keep it in the vault, and restart the bot. Without it the paths do not exist.
 
 ## Updates
