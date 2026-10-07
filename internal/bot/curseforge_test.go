@@ -65,3 +65,18 @@ func TestCurseProxyBudget(t *testing.T) {
 		t.Fatal("other addresses have their own budget")
 	}
 }
+
+func TestCurseProxyRoutesNextToTheSite(t *testing.T) {
+	// the patterns must live next to "GET /" without a conflict (that panicked in 0.5.0)
+	mux := http.NewServeMux()
+	cp := newCurseProxy("k")
+	mux.Handle("GET /api/curseforge/", cp)
+	mux.Handle("POST /api/curseforge/", cp)
+	mux.Handle("GET /", http.NotFoundHandler())
+	req := httptest.NewRequest("GET", "/api/curseforge/v1/games", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != 404 || !strings.Contains(rec.Body.String(), "proxy") {
+		t.Fatalf("the proxy should answer: %d %s", rec.Code, rec.Body.String())
+	}
+}

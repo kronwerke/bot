@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+
+- The CurseForge proxy's routes carry their methods; 0.5.0 stopped at start with a key set, because a bare path next to the website's route makes Go's router panic.
+
 ## 0.5.0
 
 - A CurseForge proxy at `/api/curseforge/v1/...` for the launcher's console: it adds the key from `KW_CURSEFORGE_KEY`, so the key never reaches a launcher. Only fingerprint matching, mod info, Minecraft search and files pass; 300 requests per address in ten minutes; reads are kept for ten minutes. Without the key the path does not exist.
