@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Places survive a new world. The bot keeps every own place and every slot a streamer gave, Kronwerke Core keeps them in the world. When the server connects and knows no streamer at all, the bot puts every place back (own places first, then the slots). Otherwise it reports what it holds and the server does not, once, in the control channel, since a streamer may have freed a slot in game.
+- `!sync` also compares with the server; `!sync restore` puts the missing places back.
+
 ## 0.5.2
 
 - Members who use `/link` are passed to the launcher (Minecraft name, Discord name, streamer or Season 1, when), on every change and when the launcher connects, so its console shows them next to their places.

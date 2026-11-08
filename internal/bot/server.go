@@ -95,6 +95,7 @@ func (b *Bot) syncAfterConnect(ctx context.Context) {
 	if !strings.HasPrefix(out, "Eigene Plätze nachgetragen: 0") {
 		b.control(ctx, out)
 	}
+	b.restoreAfterConnect(ctx)
 }
 
 func (b *Bot) serverConnected() bool {

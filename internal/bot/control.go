@@ -26,7 +26,7 @@ const controlHelp = "**Befehle im Kontrollkanal**\n" +
 	"`!apply-panel <kanal-id>` Bewerben-Knopf in einen Kanal posten\n" +
 	"`!apps` Bewerbungen\n" +
 	"`!invites` vergebene Plätze und eigene Plätze\n" +
-	"`!sync` eigene Plätze für Streamer und Season-1-Spieler nachtragen\n" +
+	"`!sync` eigene Plätze für Streamer und Season-1-Spieler nachtragen, mit dem Server abgleichen; `!sync restore` trägt fehlende Plätze nach\n" +
 	"`!rcon <befehl>` Befehl auf dem Minecraft-Server\n" +
 	"`!link` Verbindung zum Server-Launcher, `!link accept <fingerprint>`\n" +
 	"`!mc status|start|stop|restart [update]|cmd|console|logs|ls|cat` den Server steuern"
@@ -180,7 +180,11 @@ func (b *Bot) runControl(ctx context.Context, line, by string) string {
 		if err != nil {
 			return "Nachtragen ging nicht: " + err.Error()
 		}
-		return out
+		diff, err := b.restorePlaces(strings.TrimSpace(rest) == "restore")
+		if err != nil {
+			return out + "\nAbgleich mit dem Server ging nicht: " + err.Error()
+		}
+		return out + "\n" + diff
 	case "!rcon":
 		if !b.serverConnected() {
 			return "Kein Minecraft-Server verbunden (Launcher oder KW_RCON_ADDR)."
