@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/kronwerke/bot/internal/store"
 )
+
+// lastRestore is the last place difference posted after a connect, so it is posted once.
+var lastRestore atomic.Value
 
 // rosterView is what Kronwerke Core prints for "kw admin roster json".
 type rosterView struct {
@@ -135,15 +139,15 @@ func (b *Bot) restoreAfterConnect(ctx context.Context) {
 		return
 	}
 	if out == "Server und Bot stimmen überein." {
-		b.lastRestore.Store("")
+		lastRestore.Store("")
 		return
 	}
 	if fresh {
 		out = "Neue Welt erkannt.\n" + out
 	}
-	if prev, _ := b.lastRestore.Load().(string); prev == out {
+	if prev, _ := lastRestore.Load().(string); prev == out {
 		return
 	}
-	b.lastRestore.Store(out)
+	lastRestore.Store(out)
 	b.control(ctx, out)
 }

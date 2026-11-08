@@ -77,8 +77,6 @@ type Bot struct {
 	siteErr string // the last website sync error, reported once
 
 	packNow atomic.Pointer[string] // the pack version the launcher reported last
-
-	lastRestore atomic.Value // the last place difference posted after a connect (string)
 }
 
 type stats struct {
