@@ -81,10 +81,10 @@ type data struct {
 	Links        map[string]string      `json:"links"`   // discord id -> minecraft name
 	Invites      map[string]Invite      `json:"invites"` // lower case minecraft name -> invite
 	Verified     map[string]time.Time   `json:"verified"`
-	Grants       map[string]Grant       `json:"grants"`    // discord id -> grant
-	LinkKeys     map[string]LinkKey     `json:"link_keys"` // fingerprint -> key
-	Names        map[string]string      `json:"names"`     // discord id -> name shown on Discord, as of the last /link
-	LinkedAt     map[string]time.Time   `json:"linked_at"` // discord id -> when /link was last used
+	Grants       map[string]Grant       `json:"grants"`                 // discord id -> grant
+	LinkKeys     map[string]LinkKey     `json:"link_keys"`              // fingerprint -> key
+	Names        map[string]string      `json:"names"`                  // discord id -> name shown on Discord, as of the last /link
+	LinkedAt     map[string]time.Time   `json:"linked_at"`              // discord id -> when /link was last used
 	OAuthSecret  string                 `json:"oauth_secret,omitempty"` // the app's OAuth2 client secret when set over the admin API
 }
 
