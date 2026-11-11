@@ -59,6 +59,10 @@ type seasonView struct {
 	// Core 0.13.3 and later print them, older ones leave the zero values
 	Tier       int  `json:"tier"`
 	Slumbering bool `json:"slumbering"`
+	// the planned start as local time in Timezone (2027-01-16T18:00): one place for the date,
+	// the website and the Twitch bot read it from /api/status (Core 0.27.0 and later)
+	Start    string `json:"start,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 func (b *Bot) refreshSeason() {

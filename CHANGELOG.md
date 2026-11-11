@@ -15,6 +15,7 @@ Needs Kronwerke Core 0.27.0 (UUIDs and `-1` slots in the admin commands).
 - What the bot posts in the control channel never runs as a command, whatever text it carries.
 - Unknown launchers: at most three wait at once, each for at most 30 minutes, and the same one is announced at most every six hours.
 - The preparation text of the status embed is the setting `status.prep`.
+- `/api/status` passes on the season's planned start and time zone from Kronwerke Core (`season.start`, `season.timezone`), so the website and the Twitch bot read the date from one place.
 
 ## 0.6.0
 
