@@ -88,6 +88,7 @@ func (f *fakeDiscord) api(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.calls = append(f.calls, c)
 	id := f.id()
+	members := f.members
 	f.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -101,8 +102,8 @@ func (f *fakeDiscord) api(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"id":%q}`, id)
 	case r.Method == "POST" && strings.HasSuffix(p, "/channels") && strings.HasPrefix(p, "/guilds/"):
 		fmt.Fprintf(w, `{"id":%q}`, id)
-	case r.Method == "GET" && strings.HasSuffix(p, "/members") && f.members != "":
-		w.Write([]byte(f.members))
+	case r.Method == "GET" && strings.HasSuffix(p, "/members") && members != "":
+		w.Write([]byte(members))
 	case p == "/users/@me/channels":
 		fmt.Fprintf(w, `{"id":%q}`, id)
 	case r.Method == "PUT" && strings.HasSuffix(p, "/commands"):
