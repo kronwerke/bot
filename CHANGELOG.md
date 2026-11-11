@@ -8,6 +8,9 @@ Needs Kronwerke Core 0.27.0 (UUIDs and `-1` slots in the admin commands).
 - Roles count as they change. A streamer or Season 1 role given to a member who linked a name brings their place at once; a role taken away takes it, with every slot they gave. Team members keep theirs.
 - Accounts by UUID. The bot keeps the UUID Kronwerke Core answers with every place and sends it with every invite, revoke and ungrant; streamers are found by UUID too. A renamed account keeps its place, the bot takes the new name from the server.
 - One Discord account, one place: `/whitelist add` refuses a member who already has one.
+- `/whitelist add` takes the Discord user first and the name they linked with `/link`; `player` is only for someone who linked none, and a typed name that differs from the linked one is refused instead of replacing it.
+- `/link` with a new name moves a streamer's slot to it (the old name comes off, the new one goes on, with the same streamer); before, the whitelist kept the old name and the answer said the player had no place.
+- `/whitelist me`: whether you are on the whitelist, under which name, through whom, how many of your own places are taken, and when the server opens. `/whitelist list` starts with "3 von 5 Plätzen vergeben" and no longer reads like "you are not on the list" to players without places.
 - Updates install only releases whose SHA256SUMS carries the release key's signature (`SHA256SUMS.sig`, Ed25519, the key is pinned in the binary). A release anyone else publishes is refused.
 - `/api/status` shows the number of players online, no names.
 - CurseForge proxy: the rate limit goes by the address the reverse proxy appended (the last `X-Forwarded-For` entry), and the cache keeps at most 64 MB, oldest first, answers over 2 MB not at all.

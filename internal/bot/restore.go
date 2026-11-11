@@ -24,6 +24,7 @@ type rosterStreamer struct {
 	Name    string         `json:"name"`
 	Granted bool           `json:"granted"`
 	Kind    string         `json:"kind"`
+	Slots   int            `json:"slots"`
 	Invited []rosterPlayer `json:"invited"`
 }
 

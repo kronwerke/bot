@@ -28,13 +28,14 @@ func commands() []discord.ApplicationCommand {
 			DMPermission: ptr(false),
 			Options: []discord.ApplicationCommandOption{
 				{Type: discord.OptSubCommand, Name: "add", Description: "Jemanden auf die Whitelist setzen", Options: []discord.ApplicationCommandOption{
-					{Type: discord.OptString, Name: "player", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
 					{Type: discord.OptUser, Name: "user", Description: "Die Person auf dem Discord", Required: true},
+					{Type: discord.OptString, Name: "player", Description: "Minecraft-Name, nur wenn die Person keinen mit /link hinterlegt hat", MinLength: 3, MaxLength: 16},
 				}},
 				{Type: discord.OptSubCommand, Name: "remove", Description: "Jemanden von der Whitelist nehmen", Options: []discord.ApplicationCommandOption{
 					{Type: discord.OptString, Name: "player", Description: "Minecraft-Name", Required: true, MinLength: 3, MaxLength: 16},
 				}},
-				{Type: discord.OptSubCommand, Name: "list", Description: "Wen du eingetragen hast"},
+				{Type: discord.OptSubCommand, Name: "list", Description: "Wen du eingetragen hast und wie viele Plätze frei sind"},
+				{Type: discord.OptSubCommand, Name: "me", Description: "Bin ich auf der Whitelist? Unter welchem Namen, über wen, ab wann"},
 			},
 		},
 	}
@@ -72,6 +73,8 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 				b.whitelistRemove(ctx, i, sub)
 			case "list":
 				b.whitelistList(ctx, i)
+			case "me":
+				b.whitelistMe(ctx, i)
 			}
 		}
 	case discord.InteractionComponent:

@@ -79,6 +79,22 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		return
 	}
 	kind, slots := b.placeFor(i.Member)
+	// a slot from a streamer moves to the new name, with the same streamer
+	if held := b.store.InvitesOf(u.ID); kind == "" && len(held) > 0 && !strings.EqualFold(held[0].Player, name) {
+		b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
+		if err := b.moveInvite(ctx, held[0], name); err != nil {
+			b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("Du stehst als **%s** auf der Whitelist; der neue Name ging nicht: %v. Der Streamer oder das Team kann helfen.", held[0].Player, err)})
+			return
+		}
+		b.store.SetLinkName(u.ID, u.Name(), time.Now())
+		go b.pushLinks()
+		b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("Dein Platz steht jetzt auf **%s** statt **%s**, weiter über <@%s>.", name, held[0].Player, held[0].StreamerID)})
+		return
+	}
+	if held := b.store.InvitesOf(u.ID); kind == "" && len(held) > 0 {
+		b.reply(ctx, i, fmt.Sprintf("**%s** ist schon auf der Whitelist, über <@%s>.", held[0].Player, held[0].StreamerID))
+		return
+	}
 	if kind == "" {
 		b.store.SetLink(u.ID, name)
 		b.store.SetLinkName(u.ID, u.Name(), time.Now())
@@ -116,6 +132,32 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		text = fmt.Sprintf("Willkommen zurück! **%s** ist auf der Whitelist. Danke fürs Spielen in Season 1: Du hast %d eigene Plätze, die du mit `/whitelist add` vergeben kannst.", name, slots)
 	}
 	b.rest.EditReply(ctx, i, discord.MessageSend{Content: text})
+}
+
+// moveInvite puts a streamer's slot onto the holder's new Minecraft name: the old name
+// comes off the whitelist, the new one goes on, with the same streamer.
+func (b *Bot) moveInvite(ctx context.Context, inv store.Invite, name string) error {
+	if other, ok := b.store.Invite(name); ok && other.DiscordID != inv.DiscordID {
+		return fmt.Errorf("%s hat schon einen Platz", other.Player)
+	}
+	if err := b.revoke(ctx, inv, "neuer Name "+name); err != nil {
+		return err
+	}
+	out, err := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(inv.StreamerID), name))
+	if err != nil {
+		// the old name back, so nobody is left without a place
+		if back, err2 := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(inv.StreamerID), inv.Player)); err2 == nil {
+			inv.UUID = answerUUID(back)
+			b.store.PutInvite(inv)
+		}
+		return err
+	}
+	b.store.PutInvite(store.Invite{Player: name, DiscordID: inv.DiscordID, StreamerID: inv.StreamerID, UUID: answerUUID(out), Created: time.Now()})
+	b.store.SetLink(inv.DiscordID, name)
+	if role := b.setting("role.player"); role != "" {
+		b.rest.AddRole(ctx, b.guild(), inv.DiscordID, role, "Whitelist slot moved to a new name")
+	}
+	return nil
 }
 
 // grant gives a member a place of their own on the server and on Discord.
@@ -206,6 +248,18 @@ func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub disc
 			target = o.String()
 		}
 	}
+	// the name the person linked counts; a typed one only for someone who linked none
+	linked := b.store.Link(target)
+	switch {
+	case player == "" && linked == "":
+		b.reply(ctx, i, fmt.Sprintf("<@%s> hat noch keinen Minecraft-Namen mit `/link` hinterlegt. Bitte sie darum, oder gib den Namen bei `player` mit an.", target))
+		return
+	case player == "":
+		player = linked
+	case linked != "" && !strings.EqualFold(player, linked):
+		b.reply(ctx, i, fmt.Sprintf("<@%s> hat **%s** hinterlegt, nicht **%s**. Lass `player` weg, dann gilt der hinterlegte Name, oder sie ändert ihn mit `/link`.", target, linked, player))
+		return
+	}
 	if !mcName.MatchString(player) {
 		b.reply(ctx, i, "Das ist kein gültiger Minecraft-Name.")
 		return
@@ -240,7 +294,9 @@ func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub disc
 		return
 	}
 	b.store.PutInvite(store.Invite{Player: player, DiscordID: target, StreamerID: streamer.ID, UUID: answerUUID(out), Created: time.Now()})
-	b.store.SetLink(target, player)
+	if linked == "" {
+		b.store.SetLink(target, player)
+	}
 	if role := b.setting("role.player"); role != "" {
 		b.rest.AddRole(ctx, b.guild(), target, role, "Whitelisted by "+streamer.Username)
 	}
@@ -286,6 +342,56 @@ func (b *Bot) whitelistRemove(ctx context.Context, i *discord.Interaction, sub d
 	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("**%s** ist von der Whitelist entfernt.", inv.Player)})
 }
 
+// slotsOf is "3 von 5 Plätzen vergeben" for a member with a place of their own, from the
+// server's roster; empty when the server does not answer or they have none.
+func (b *Bot) slotsOf(discordID string) string {
+	g, ok := b.store.Grant(discordID)
+	if !ok || !b.serverConnected() {
+		return ""
+	}
+	r, err := b.roster()
+	if err != nil {
+		return ""
+	}
+	for _, s := range r.Streamers {
+		if (g.UUID != "" && strings.EqualFold(s.UUID, g.UUID)) || strings.EqualFold(s.Name, g.Player) {
+			return fmt.Sprintf("%d von %d Plätzen vergeben", len(s.Invited), s.Slots)
+		}
+	}
+	return ""
+}
+
+// whitelistMe is /whitelist me: where the member stands.
+func (b *Bot) whitelistMe(ctx context.Context, i *discord.Interaction) {
+	u := i.Actor()
+	start := ""
+	b.apiMu.Lock()
+	season := b.season
+	b.apiMu.Unlock()
+	if season != nil && season.Start != "" && !season.Running {
+		if t, err := time.ParseInLocation("2006-01-02T15:04", season.Start, berlin); err == nil {
+			start = fmt.Sprintf(" Der Server öffnet <t:%d:F> (<t:%d:R>).", t.Unix(), t.Unix())
+		}
+	}
+	if g, ok := b.store.Grant(u.ID); ok {
+		text := fmt.Sprintf("Du hast einen eigenen Platz als **%s** (%s).", g.Player, g.Label())
+		if sl := b.slotsOf(u.ID); sl != "" {
+			text += " " + sl + ", mit `/whitelist add` vergibst du sie."
+		}
+		b.reply(ctx, i, text+start)
+		return
+	}
+	if held := b.store.InvitesOf(u.ID); len(held) > 0 {
+		b.reply(ctx, i, fmt.Sprintf("Du stehst als **%s** auf der Whitelist, eingetragen von <@%s>.%s", held[0].Player, held[0].StreamerID, start))
+		return
+	}
+	if name := b.store.Link(u.ID); name != "" {
+		b.reply(ctx, i, fmt.Sprintf("Du bist noch nicht auf der Whitelist. Dein hinterlegter Name ist **%s**: ein Streamer kann dich damit eintragen.%s", name, start))
+		return
+	}
+	b.reply(ctx, i, "Du bist noch nicht auf der Whitelist. Hinterleg zuerst deinen Minecraft-Namen mit `/link`, dann kann dich ein Streamer eintragen."+start)
+}
+
 func (b *Bot) whitelistList(ctx context.Context, i *discord.Interaction) {
 	me := i.Actor().ID
 	all := b.isTeam(i.Member)
@@ -295,11 +401,22 @@ func (b *Bot) whitelistList(ctx context.Context, i *discord.Interaction) {
 	} else {
 		invs = b.store.InvitesBy(me)
 	}
+	head := b.slotsOf(me)
 	if len(invs) == 0 {
-		b.reply(ctx, i, "Noch niemand eingetragen.")
+		text := "Du hast noch niemanden eingetragen."
+		if head != "" {
+			text = head + ". " + text
+		}
+		if _, granted := b.store.Grant(me); !granted && !all {
+			text = "Du hast keine Plätze zu vergeben. Ob du selbst drauf bist, sagt `/whitelist me`."
+		}
+		b.reply(ctx, i, text)
 		return
 	}
 	var lines []string
+	if head != "" {
+		lines = append(lines, "**"+head+"**")
+	}
 	for _, v := range invs {
 		line := fmt.Sprintf("• **%s** (<@%s>)", v.Player, v.DiscordID)
 		if all {
