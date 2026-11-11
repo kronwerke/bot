@@ -227,71 +227,73 @@ func (b *Bot) syncPlaces(ctx context.Context) (string, error) {
 	return out, nil
 }
 
-func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub discord.CommandOption) {
-	_, season1 := b.store.Grant(i.Actor().ID)
-	if !i.Member.HasRole(b.setting("role.streamer")) && !b.isTeam(i.Member) && !season1 {
-		b.reply(ctx, i, "Nur Streamer und Season-1-Spieler können Leute auf die Whitelist setzen. Trag dich zuerst mit `/link` ein.")
-		return
+// userError is a refusal for the person who asked, not a fault of the bot.
+type userError string
+
+func (e userError) Error() string { return string(e) }
+
+func mention(id string) string { return "<@" + id + ">" }
+
+// canGive says whether a member may give whitelist slots: streamers, the team and
+// everyone with a place of their own (Season 1).
+func (b *Bot) canGive(m *discord.Member) bool {
+	if m == nil || m.User == nil {
+		return false
 	}
-	streamer := i.Actor()
-	streamerMC := b.store.Link(streamer.ID)
-	if streamerMC == "" {
-		b.reply(ctx, i, "Verknüpf zuerst deinen eigenen Minecraft-Namen mit `/link`.")
-		return
+	_, own := b.store.Grant(m.User.ID)
+	return own || m.HasRole(b.setting("role.streamer")) || b.isTeam(m)
+}
+
+// checkInvite holds the rules of /whitelist add, for the command and the whitelist app:
+// the actor may give slots, the target is verified and has no place yet, and the name
+// that counts is the one the target linked. who names a person in the answer.
+func (b *Bot) checkInvite(actor, target *discord.Member, player string, who func(string) string) (name, linked string, err error) {
+	if !b.canGive(actor) {
+		return "", "", userError("Nur Streamer und Season-1-Spieler können Leute auf die Whitelist setzen. Trag dich zuerst mit `/link` ein.")
 	}
-	var player, target string
-	for _, o := range sub.Options {
-		switch o.Name {
-		case "player":
-			player = strings.TrimSpace(o.String())
-		case "user":
-			target = o.String()
-		}
+	if b.store.Link(actor.User.ID) == "" {
+		return "", "", userError("Verknüpf zuerst deinen eigenen Minecraft-Namen mit `/link`.")
 	}
+	if target == nil || target.User == nil {
+		return "", "", userError("Diese Person ist nicht auf dem Kronwerke-Discord.")
+	}
+	id := target.User.ID
+	player = strings.TrimSpace(player)
 	// the name the person linked counts; a typed one only for someone who linked none
-	linked := b.store.Link(target)
+	linked = b.store.Link(id)
 	switch {
 	case player == "" && linked == "":
-		b.reply(ctx, i, fmt.Sprintf("<@%s> hat noch keinen Minecraft-Namen mit `/link` hinterlegt. Bitte sie darum, oder gib den Namen bei `player` mit an.", target))
-		return
+		return "", "", userError(fmt.Sprintf("%s hat noch keinen Minecraft-Namen mit `/link` hinterlegt. Bitte sie darum, oder gib den Namen mit an.", who(id)))
 	case player == "":
 		player = linked
 	case linked != "" && !strings.EqualFold(player, linked):
-		b.reply(ctx, i, fmt.Sprintf("<@%s> hat **%s** hinterlegt, nicht **%s**. Lass `player` weg, dann gilt der hinterlegte Name, oder sie ändert ihn mit `/link`.", target, linked, player))
-		return
+		return "", "", userError(fmt.Sprintf("%s hat **%s** hinterlegt, nicht **%s**. Es gilt der hinterlegte Name, oder sie ändert ihn mit `/link`.", who(id), linked, player))
 	}
 	if !mcName.MatchString(player) {
-		b.reply(ctx, i, "Das ist kein gültiger Minecraft-Name.")
-		return
+		return "", "", userError("Das ist kein gültiger Minecraft-Name.")
 	}
-	var tm discord.Member
-	if i.Data.Resolved != nil {
-		if m, ok := i.Data.Resolved.Members[target]; ok {
-			tm = m
-		}
-	}
-	if !tm.HasRole(b.setting("role.member")) {
-		b.reply(ctx, i, "Diese Person ist noch nicht verifiziert. Sie muss erst auf dem Discord das Captcha lösen.")
-		return
+	if !target.HasRole(b.setting("role.member")) {
+		return "", "", userError("Diese Person ist noch nicht verifiziert. Sie muss erst auf dem Discord das Captcha lösen.")
 	}
 	if inv, ok := b.store.Invite(player); ok {
-		b.reply(ctx, i, fmt.Sprintf("**%s** hat schon einen Platz (von <@%s>).", inv.Player, inv.StreamerID))
-		return
+		return "", "", userError(fmt.Sprintf("**%s** hat schon einen Platz (von %s).", inv.Player, who(inv.StreamerID)))
 	}
 	// one Discord account, one place: a second name would be a second place for the same person
-	if held := b.store.InvitesOf(target); len(held) > 0 {
-		b.reply(ctx, i, fmt.Sprintf("<@%s> hat schon einen Platz als **%s**.", target, held[0].Player))
-		return
+	if held := b.store.InvitesOf(id); len(held) > 0 {
+		return "", "", userError(fmt.Sprintf("%s hat schon einen Platz als **%s**.", who(id), held[0].Player))
 	}
-	if g, ok := b.store.Grant(target); ok {
-		b.reply(ctx, i, fmt.Sprintf("<@%s> hat schon einen eigenen Platz als **%s**.", target, g.Player))
-		return
+	if g, ok := b.store.Grant(id); ok {
+		return "", "", userError(fmt.Sprintf("%s hat schon einen eigenen Platz als **%s**.", who(id), g.Player))
 	}
-	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
-	out, err := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(streamer.ID), player))
+	return player, linked, nil
+}
+
+// invite gives a slot after checkInvite: on the server, in the store, the role, the
+// whitelist channel and a DM to the new player. out is Core's answer.
+func (b *Bot) invite(ctx context.Context, streamer discord.User, target, player, linked string) (out string, err error) {
+	out, err = b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(streamer.ID), player))
 	if err != nil {
-		b.rest.EditReply(ctx, i, discord.MessageSend{Content: "Das ging nicht: " + err.Error()})
-		return
+		return "", err
 	}
 	b.store.PutInvite(store.Invite{Player: player, DiscordID: target, StreamerID: streamer.ID, UUID: answerUUID(out), Created: time.Now()})
 	if linked == "" {
@@ -311,7 +313,41 @@ func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub disc
 		b.rest.SendMessage(ctx, dm.ID, discord.MessageSend{Content: fmt.Sprintf(
 			"Du bist auf der Kronwerke-Whitelist, eingeladen von %s. Dein Minecraft-Name: **%s**. Wie du das Modpack installierst, steht auf dem Discord im Kanal zur Installation.", streamer.Name(), player)})
 	}
-	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("**%s** ist drin. %s", player, out)})
+	return out, nil
+}
+
+func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub discord.CommandOption) {
+	var player, target string
+	for _, o := range sub.Options {
+		switch o.Name {
+		case "player":
+			player = strings.TrimSpace(o.String())
+		case "user":
+			target = o.String()
+		}
+	}
+	tm := &discord.Member{User: &discord.User{ID: target}}
+	if i.Data.Resolved != nil {
+		if m, ok := i.Data.Resolved.Members[target]; ok {
+			m.User = &discord.User{ID: target}
+			if u, ok := i.Data.Resolved.Users[target]; ok {
+				m.User = &u
+			}
+			tm = &m
+		}
+	}
+	name, linked, err := b.checkInvite(i.Member, tm, player, mention)
+	if err != nil {
+		b.reply(ctx, i, err.Error())
+		return
+	}
+	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
+	out, err := b.invite(ctx, i.Actor(), target, name, linked)
+	if err != nil {
+		b.rest.EditReply(ctx, i, discord.MessageSend{Content: "Das ging nicht: " + err.Error()})
+		return
+	}
+	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("**%s** ist drin. %s", name, out)})
 }
 
 func (b *Bot) whitelistRemove(ctx context.Context, i *discord.Interaction, sub discord.CommandOption) {
@@ -321,17 +357,15 @@ func (b *Bot) whitelistRemove(ctx context.Context, i *discord.Interaction, sub d
 			player = strings.TrimSpace(o.String())
 		}
 	}
-	inv, ok := b.store.Invite(player)
-	if !ok {
+	if _, ok := b.store.Invite(player); !ok {
 		if g, ok := b.store.GrantByPlayer(player); ok {
 			b.removeGrant(ctx, i, g)
 			return
 		}
-		b.reply(ctx, i, "Für diesen Namen gibt es keinen Platz.")
-		return
 	}
-	if inv.StreamerID != i.Actor().ID && !b.isTeam(i.Member) {
-		b.reply(ctx, i, "Du kannst nur Leute entfernen, die du selbst eingeladen hast.")
+	inv, err := b.checkRemove(i.Member, player)
+	if err != nil {
+		b.reply(ctx, i, err.Error())
 		return
 	}
 	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
@@ -340,6 +374,18 @@ func (b *Bot) whitelistRemove(ctx context.Context, i *discord.Interaction, sub d
 		return
 	}
 	b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("**%s** ist von der Whitelist entfernt.", inv.Player)})
+}
+
+// checkRemove finds the slot a member may take back: one they gave, or any for the team.
+func (b *Bot) checkRemove(actor *discord.Member, player string) (store.Invite, error) {
+	inv, ok := b.store.Invite(strings.TrimSpace(player))
+	if !ok {
+		return inv, userError("Für diesen Namen gibt es keinen Platz.")
+	}
+	if actor == nil || actor.User == nil || (inv.StreamerID != actor.User.ID && !b.isTeam(actor)) {
+		return inv, userError("Du kannst nur Leute entfernen, die du selbst eingeladen hast.")
+	}
+	return inv, nil
 }
 
 // slotsOf is "3 von 5 Plätzen vergeben" for a member with a place of their own, from the

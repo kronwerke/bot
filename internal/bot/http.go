@@ -57,6 +57,7 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 		mux.Handle("GET /api/curseforge/", cp)
 		mux.Handle("POST /api/curseforge/", cp)
 	}
+	b.routeApp(mux)
 	if b.site != nil {
 		mux.Handle("GET /", b.site.Handler())
 	}

@@ -124,6 +124,19 @@ The bot serves the latest release of `kronwerke/website` on `/`. A new tag there
 
 `KW_ADMIN_TOKEN` in `bot.env` turns on `/api/admin/...` (see the README). Generate it with `openssl rand -hex 32`, keep it in the vault, and restart the bot. Without it the paths do not exist.
 
+## The whitelist app
+
+The page lives at `https://kronwerke.com/whitelist/` and, inside Discord, as the app's Activity. It needs four things in the [developer portal](https://discord.com/developers/applications), in the bot's application:
+
+1. **OAuth2**: copy the Client Secret (Reset Secret if none is shown) into `bot.env` as `KW_DISCORD_CLIENT_SECRET`, then `sudo systemctl restart kronwerke-bot`.
+2. **OAuth2, Redirects**: add `https://kronwerke.com/whitelist/callback`. That is the sign in on the website.
+3. **Activities, Settings**: switch Activities on. Discord then creates the "Launch" entry point by itself.
+4. **Activities, URL Mappings**: prefix `/`, target `kronwerke.com/whitelist`. Without `https://`; the target is a directory, not a file.
+
+Optionally, under **Installation**, keep only Guild Install, so the Activity is only offered on the Kronwerke Discord.
+
+Then `/whitelist verwalten` opens the Activity. Before step 3 it answers with a button to the website instead, and before step 1 the page says it is not set up yet.
+
 ## Updates
 
 1. Add a section `## 0.2.0` to `CHANGELOG.md` and push.

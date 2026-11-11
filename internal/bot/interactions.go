@@ -36,6 +36,7 @@ func commands() []discord.ApplicationCommand {
 				}},
 				{Type: discord.OptSubCommand, Name: "list", Description: "Wen du eingetragen hast und wie viele Plätze frei sind"},
 				{Type: discord.OptSubCommand, Name: "me", Description: "Bin ich auf der Whitelist? Unter welchem Namen, über wen, ab wann"},
+				{Type: discord.OptSubCommand, Name: "verwalten", Description: "Die Whitelist-App öffnen: deine Leute mit Skin-Köpfen, eintragen und entfernen"},
 			},
 		},
 	}
@@ -75,6 +76,8 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 				b.whitelistList(ctx, i)
 			case "me":
 				b.whitelistMe(ctx, i)
+			case "verwalten":
+				b.openApp(ctx, i)
 			}
 		}
 	case discord.InteractionComponent:
@@ -92,6 +95,10 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 			b.openApplication(ctx, i)
 		case strings.HasPrefix(id, idApplyAccept):
 			b.decideApplication(ctx, i, strings.TrimPrefix(id, idApplyAccept), true)
+		case strings.HasPrefix(id, idSlotsAdd):
+			b.decideSlots(ctx, i, strings.TrimPrefix(id, idSlotsAdd), true)
+		case strings.HasPrefix(id, idSlotsNo):
+			b.decideSlots(ctx, i, strings.TrimPrefix(id, idSlotsNo), false)
 		case strings.HasPrefix(id, idApplyDecline):
 			b.decideApplication(ctx, i, strings.TrimPrefix(id, idApplyDecline), false)
 		}

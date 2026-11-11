@@ -35,8 +35,9 @@ type Application struct {
 type Grant struct {
 	Player    string    `json:"player"` // Minecraft name
 	DiscordID string    `json:"discord_id"`
-	Kind      string    `json:"kind,omitempty"` // KindStreamer or KindSeason1; empty is Season 1
-	UUID      string    `json:"uuid,omitempty"` // the Minecraft account, as Kronwerke Core answered
+	Kind      string    `json:"kind,omitempty"`  // KindStreamer or KindSeason1; empty is Season 1
+	UUID      string    `json:"uuid,omitempty"`  // the Minecraft account, as Kronwerke Core answered
+	Bonus     int       `json:"bonus,omitempty"` // extra slots the team gave on request, kept across new worlds
 	Created   time.Time `json:"created"`
 }
 
@@ -431,6 +432,20 @@ func (s *Store) GrantByPlayer(player string) (g Grant, ok bool) {
 
 func (s *Store) PutGrant(g Grant) error {
 	return s.update(func(d *data) { d.Grants[g.DiscordID] = g })
+}
+
+// AddBonus raises the extra slots of a grant and returns the new number.
+func (s *Store) AddBonus(discordID string, n int) (bonus int, ok bool, err error) {
+	err = s.update(func(d *data) {
+		g, has := d.Grants[discordID]
+		if !has {
+			return
+		}
+		g.Bonus += n
+		d.Grants[discordID] = g
+		bonus, ok = g.Bonus, true
+	})
+	return
 }
 
 func (s *Store) DeleteGrant(discordID string) error {

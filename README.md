@@ -44,7 +44,8 @@ Everything else the team might want to change (channel ids, roles, timings) is a
 | Part | What it does |
 | --- | --- |
 | `cmd/kronwerke-bot` | The binary: configuration from the environment, `version` |
-| `internal/bot` | Verification, applications, whitelist, status, control channel, settings |
+| `internal/bot` | Verification, applications, whitelist, the whitelist app, status, control channel, settings |
+| `internal/wlweb` | The whitelist app's page, with Discord's Embedded App SDK bundled (`tools/sdk`) |
 | `internal/discord` | REST with rate limits, the gateway with resume and heartbeats, interactions |
 | `internal/ws` | A small WebSocket client for the gateway |
 | `internal/captcha` | Captcha codes and the PNG they are drawn into |
@@ -78,6 +79,7 @@ On a server, see [docs/DEPLOY.md](docs/DEPLOY.md): download a release, run `inst
 | `/whitelist add <player> <user>` | streamers, Season 1 players | Give one of your slots to someone on the Discord |
 | `/whitelist remove <player>` | streamers, Season 1 players | Free it again (a Season 1 name frees its slots too) |
 | `/whitelist list` | streamers, Season 1 players | Who has your slots |
+| `/whitelist verwalten` | everyone | Opens the whitelist app (Activity, or kronwerke.com/whitelist/): your people with their faces, search, add, remove, ask for more slots |
 
 In the control channel (team leads, and the bot's own account):
 

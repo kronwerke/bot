@@ -36,6 +36,7 @@ const (
 	CallbackDeferredUpdate  = 6
 	CallbackUpdateMessage   = 7
 	CallbackModal           = 9
+	CallbackLaunchActivity  = 12 // opens the app's Activity; needs Activities on in the developer portal
 )
 
 // Message flags.
@@ -231,6 +232,11 @@ func Row(cs ...Component) Component { return Component{Type: ComponentActionRow,
 // Button is an interactive button.
 func Button(customID, label string, style int) Component {
 	return Component{Type: ComponentButton, CustomID: customID, Label: label, Style: style}
+}
+
+// LinkButton opens an address.
+func LinkButton(url, label string) Component {
+	return Component{Type: ComponentButton, URL: url, Label: label, Style: ButtonLink}
 }
 
 // TextInput is a text input for a modal.

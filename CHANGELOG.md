@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- The whitelist app: one page for managing whitelist slots, with Minecraft faces. In Discord it opens as an Activity with `/whitelist verwalten`; outside Discord it is at kronwerke.com/whitelist/. Both sign in with Discord (the Activity through the Embedded App SDK, the website through Discord's OAuth page) and follow the same rules as the slash commands.
+  - Your own place and "5 von 8 Plätzen belegt".
+  - Your people with their faces, removing with a second click.
+  - Search by Minecraft or Discord name, with the state of every hit (free, already has a place, not verified, no name linked). Someone without a linked name gets one typed in, checked at Mojang first.
+  - "Mehr Plätze anfragen" posts the request in the control channel with buttons (2 more, 4 more, decline) for the project leads; the answer reaches the asker as a DM. Extra slots are kept with the place, so a new world gets them back.
+- Faces come from the bot itself (Mojang profile, skin, face and hat layer, cached), since an Activity loads nothing from other addresses.
+- Needs `KW_DISCORD_CLIENT_SECRET` and, in the developer portal, Activities switched on. Without them `/whitelist verwalten` answers with the website link and the page says it is not set up yet. See docs/DEPLOY.md.
+- `/whitelist add` and `/whitelist remove` share their checks with the app.
+
 ## 0.7.0
 
 Needs Kronwerke Core 0.27.0 (UUIDs and `-1` slots in the admin commands).

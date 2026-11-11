@@ -103,6 +103,11 @@ func (b *Bot) restorePlaces(apply bool) (string, error) {
 			failed = append(failed, fmt.Sprintf("%s: %v", label, err))
 			continue
 		}
+		if g.Bonus > 0 {
+			if out, err := b.console(fmt.Sprintf("kw admin bonus %s %d", g.Player, g.Bonus)); err != nil || !strings.Contains(out, "now has") {
+				failed = append(failed, fmt.Sprintf("%s: %d Extra-Plätze (%s)", label, g.Bonus, strings.TrimSpace(out+" "+errText(err))))
+			}
+		}
 		done = append(done, label)
 	}
 	for _, i := range invites {
@@ -166,4 +171,11 @@ func (b *Bot) restoreAfterConnect(ctx context.Context) {
 	}
 	lastRestore.Store(out)
 	b.control(ctx, out)
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

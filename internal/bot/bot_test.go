@@ -425,6 +425,10 @@ func newFakeRCON(t *testing.T) *fakeRCON {
 							answer = "OK granted"
 						case strings.HasPrefix(body, "kw admin invite "):
 							answer = "OK slots used 1/2"
+						case body == "kw admin roster json":
+							answer = `OK {"defaultSlots":4,"streamers":[]}`
+						case strings.HasPrefix(body, "kw admin bonus "):
+							answer = "OK " + strings.Fields(body)[3] + " now has 6 slots (2 bonus)."
 						}
 						write(c, id, 0, answer)
 					default:

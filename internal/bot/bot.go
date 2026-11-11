@@ -37,6 +37,8 @@ type Config struct {
 	AdminToken    string          // bearer token of the admin API; empty turns it off
 	Site          *site.Site      // the website served on /; nil serves nothing
 	CurseForgeKey string          // CurseForge API key for the proxy; empty turns it off
+	ClientSecret  string          // OAuth2 client secret of the app, for the whitelist app; empty turns sign in off
+	PublicURL     string          // where the website is reachable, https://kronwerke.com
 }
 
 // ErrRestart asks main to exit so systemd starts the (new) binary.
@@ -77,6 +79,9 @@ type Bot struct {
 	siteErr string // the last website sync error, reported once
 
 	packNow atomic.Pointer[string] // the pack version the launcher reported last
+
+	appOnce sync.Once
+	wl      *wlApp // the whitelist app, see whitelistapp.go
 }
 
 type stats struct {

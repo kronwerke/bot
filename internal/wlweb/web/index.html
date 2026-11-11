@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<title>Whitelist · Kronwerke</title>
+<link rel="preload" href="font.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main class="app" id="app" aria-busy="true">
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="brand-name">Kronwerke</span>
+    </div>
+    <h1>Whitelist</h1>
+    <div class="who" id="who" hidden></div>
+  </header>
+
+  <section class="loading" id="loading">
+    <div class="spinner" aria-hidden="true"></div>
+    <p id="loading-text">Anmelden bei Discord …</p>
+  </section>
+
+  <section class="card login" id="login" hidden>
+    <h2>Mit Discord anmelden</h2>
+    <p>Hier verwaltest du die Whitelist-Plätze, die du als Streamer oder Season-1-Spieler vergeben kannst. Wer auf der Whitelist ist, siehst du hier auch.</p>
+    <a class="btn primary" href="login">Mit Discord anmelden</a>
+    <p class="fine" id="login-error" hidden></p>
+  </section>
+
+  <section class="card status" id="status" hidden></section>
+
+  <section class="card add" id="add" hidden>
+    <div class="row-head">
+      <h2>Jemanden eintragen</h2>
+    </div>
+    <label class="search">
+      <span class="sr">Minecraft- oder Discord-Name</span>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" maxlength="40" placeholder="Minecraft- oder Discord-Name">
+    </label>
+    <div class="results" id="results" aria-live="polite"></div>
+  </section>
+
+  <section class="card players" id="players" hidden>
+    <div class="row-head">
+      <h2>Deine Leute</h2>
+      <span class="count" id="count"></span>
+    </div>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <section class="card more" id="more" hidden>
+    <h2>Mehr Plätze anfragen</h2>
+    <p>Wie viele Plätze jemand bekommt, entscheidet die Projektleitung. Schreib kurz dazu, wofür du sie brauchst.</p>
+    <textarea id="more-note" maxlength="300" rows="3" placeholder="Zum Beispiel: Meine Community ist größer geworden, ich hätte gern noch drei Plätze."></textarea>
+    <div class="actions">
+      <button class="btn" type="button" id="more-cancel">Abbrechen</button>
+      <button class="btn primary" type="button" id="more-send">Anfrage schicken</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</main>
+</body>
+</html>
