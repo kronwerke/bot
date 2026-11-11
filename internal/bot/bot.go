@@ -138,6 +138,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.loop(ctx, "applications", 30*time.Minute, b.sweepApplications)
 	go b.loop(ctx, "privacy", time.Hour, b.sweepPrivacy)
 	go b.loop(ctx, "server status", b.duration("status.interval", time.Minute), b.refreshStatus)
+	go b.loop(ctx, "reconcile", time.Hour, b.reconcileNow)
 
 	select {
 	case <-ctx.Done():
@@ -229,6 +230,11 @@ func (b *Bot) dispatch(event string, data json.RawMessage) {
 			if json.Unmarshal(data, &m) == nil && m.GuildID == b.guild() {
 				b.onMemberJoin(ctx, m)
 			}
+		case "GUILD_MEMBER_UPDATE":
+			var m discord.Member
+			if json.Unmarshal(data, &m) == nil && m.GuildID == b.guild() {
+				b.onMemberUpdate(ctx, m)
+			}
 		case "GUILD_MEMBER_REMOVE":
 			var ev struct {
 				GuildID string       `json:"guild_id"`
@@ -278,6 +284,8 @@ func (b *Bot) onReady(ctx context.Context, data json.RawMessage) {
 	b.updatePresence()
 	b.control(ctx, fmt.Sprintf("Online: %s. Befehle: `!help`", b.cfg.Version))
 	b.refreshStatus(ctx)
+	// leaves and role changes while the bot was away
+	b.reconcileNow(ctx)
 }
 
 // ---- logging to Discord ----
@@ -289,6 +297,11 @@ func (b *Bot) control(ctx context.Context, text string) {
 		return
 	}
 	for _, part := range chunks(text, 1900) {
+		// what the bot posts itself is never read back as a command, whatever text it
+		// carries: only messages that start with "!" run, so its own never do
+		if strings.HasPrefix(strings.TrimSpace(part), "!") {
+			part = "\u200b" + part
+		}
 		if _, err := b.rest.SendMessage(ctx, ch, discord.MessageSend{Content: part, AllowedMentions: discord.NoMentions}); err != nil {
 			b.log.Warn("control channel", "err", err)
 			return

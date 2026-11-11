@@ -72,7 +72,7 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 	}
 }
 
-// apiStatus is the public state of the server for the website: online, players, goals.
+// apiStatus is the public state of the server for the website: online, the player count, goals.
 func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 	b.statusMu.Lock()
 	p := b.lastPing
@@ -83,8 +83,9 @@ func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 
 	server := map[string]any{"online": false}
 	if !p.at.IsZero() && p.err == nil {
+		// counts only: who is online is nobody's business outside the server and its Discord
 		server = map[string]any{"online": true, "players": p.status.Online, "max": p.status.Max,
-			"names": p.status.Players, "version": p.status.Version, "checked": p.at.UTC()}
+			"version": p.status.Version, "checked": p.at.UTC()}
 	}
 	if i, ok := b.link.Connected(); ok {
 		server["state"] = i.State

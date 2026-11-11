@@ -60,11 +60,12 @@ type Hub struct {
 	Hooks Hooks
 	Log   *slog.Logger
 
-	mu      sync.Mutex
-	cur     *session
-	pending map[string]Info
-	hashes  map[string]string // fingerprint -> key hash of waiting launchers
-	nextID  atomic.Int64
+	mu        sync.Mutex
+	cur       *session
+	pending   map[string]Info
+	hashes    map[string]string    // fingerprint -> key hash of waiting launchers
+	announced map[string]time.Time // fingerprint -> when the control channel last heard of it
+	nextID    atomic.Int64
 }
 
 type session struct {
@@ -196,6 +197,14 @@ func (h *Hub) accepted(key string) bool {
 	return ok && subtle.ConstantTimeCompare([]byte(stored), []byte(Hash(key))) == 1
 }
 
+// Unknown launchers: how many may wait at once, how long one waits, how often the same
+// one is announced in the control channel.
+const (
+	maxPending    = 3
+	maxWait       = 30 * time.Minute
+	announceEvery = 6 * time.Hour
+)
+
 // waitForAcceptance keeps an unknown launcher on the line until the team accepts it
 // (then it is served right away) or it goes away.
 func (h *Hub) waitForAcceptance(conn *ws.ServerConn, key string, info Info) {
@@ -203,7 +212,21 @@ func (h *Hub) waitForAcceptance(conn *ws.ServerConn, key string, info Info) {
 	if h.pending == nil {
 		h.pending, h.hashes = map[string]Info{}, map[string]string{}
 	}
-	_, seen := h.pending[info.Fingerprint]
+	if h.announced == nil {
+		h.announced = map[string]time.Time{}
+	}
+	_, waiting := h.pending[info.Fingerprint]
+	if !waiting && len(h.pending) >= maxPending {
+		// a few unknown launchers may wait at once; more are turned away
+		h.mu.Unlock()
+		conn.CloseWith(4004)
+		return
+	}
+	// each launcher is announced in the control channel once in a while, not on every reconnect
+	seen := waiting || time.Since(h.announced[info.Fingerprint]) < announceEvery
+	if !seen {
+		h.announced[info.Fingerprint] = time.Now()
+	}
 	h.pending[info.Fingerprint] = info
 	h.hashes[info.Fingerprint] = Hash(key)
 	h.mu.Unlock()
@@ -235,9 +258,14 @@ func (h *Hub) waitForAcceptance(conn *ws.ServerConn, key string, info Info) {
 	}()
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	limit := time.After(maxWait)
 	for {
 		select {
 		case <-gone:
+			return
+		case <-limit:
+			// nobody accepted it: the launcher tries again later and is announced again then
+			conn.CloseWith(4005)
 			return
 		case <-t.C:
 			if h.accepted(key) {

@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,8 +25,12 @@ type fakeGitHub struct {
 	tag       string
 	bin       []byte
 	sums      string
+	sig       []byte
 	latestHit int
 }
+
+// testKey signs the fake releases; the updaters of the tests trust it instead of ReleaseKey.
+var testPub, testPriv, _ = ed25519.GenerateKey(nil)
 
 func newGitHub(t *testing.T, tag string, bin []byte, sumOverride string) *fakeGitHub {
 	f := &fakeGitHub{tag: tag, bin: bin}
@@ -34,6 +39,7 @@ func newGitHub(t *testing.T, tag string, bin []byte, sumOverride string) *fakeGi
 	if sumOverride != "" {
 		f.sums = sumOverride
 	}
+	f.sig = ed25519.Sign(testPriv, []byte(f.sums))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /repos/kronwerke/bot/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		f.latestHit++
@@ -47,11 +53,13 @@ func newGitHub(t *testing.T, tag string, bin []byte, sumOverride string) *fakeGi
 			"assets": []map[string]string{
 				{"name": Asset, "browser_download_url": f.srv.URL + "/dl/bin"},
 				{"name": "SHA256SUMS", "browser_download_url": f.srv.URL + "/dl/sums"},
+				{"name": "SHA256SUMS.sig", "browser_download_url": f.srv.URL + "/dl/sig"},
 			},
 		})
 	})
 	mux.HandleFunc("GET /dl/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(f.bin) })
 	mux.HandleFunc("GET /dl/sums", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, f.sums) })
+	mux.HandleFunc("GET /dl/sig", func(w http.ResponseWriter, r *http.Request) { w.Write(f.sig) })
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -64,7 +72,7 @@ func setup(t *testing.T, gh *fakeGitHub) (*Updater, string) {
 	return &Updater{
 		Repo: "kronwerke/bot", API: gh.srv.URL, Binary: bin,
 		TrialFile: filepath.Join(dir, "state", "update.trial"), SkipFile: filepath.Join(dir, "state", "update.skip"),
-		Current: "v0.1.0",
+		Current: "v0.1.0", Key: testPub,
 	}, bin
 }
 
@@ -186,5 +194,30 @@ func TestRolledBackTagIsSkipped(t *testing.T) {
 	u.etag = ""
 	if _, ok, _ := u.Check(context.Background()); !ok {
 		t.Fatal("a newer tag than the skipped one must be offered")
+	}
+}
+
+// A release signed with another key, or not signed at all, is never installed.
+func TestInstallRefusesForeignSignatures(t *testing.T) {
+	gh := newGitHub(t, "v0.2.0", fakeBinary("v0.2.0"), "")
+	_, other, _ := ed25519.GenerateKey(nil)
+	gh.sig = ed25519.Sign(other, []byte(gh.sums))
+	u, bin := setup(t, gh)
+	r, ok, err := u.Check(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("check: %v %v", ok, err)
+	}
+	if err := u.Install(context.Background(), r); err == nil || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("installed a release signed by someone else: %v", err)
+	}
+	if b, _ := os.ReadFile(bin); string(b) != string(fakeBinary("v0.1.0")) {
+		t.Fatal("the binary was replaced")
+	}
+}
+
+func TestReleaseKeyIsAnEd25519Key(t *testing.T) {
+	u := &Updater{}
+	if len(u.key()) != ed25519.PublicKeySize {
+		t.Fatalf("ReleaseKey decodes to %d bytes", len(u.key()))
 	}
 }

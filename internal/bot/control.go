@@ -26,7 +26,7 @@ const controlHelp = "**Befehle im Kontrollkanal**\n" +
 	"`!apply-panel <kanal-id>` Bewerben-Knopf in einen Kanal posten\n" +
 	"`!apps` Bewerbungen\n" +
 	"`!invites` vergebene Plätze und eigene Plätze\n" +
-	"`!sync` eigene Plätze für Streamer und Season-1-Spieler nachtragen, mit dem Server abgleichen; `!sync restore` trägt fehlende Plätze nach\n" +
+	"`!sync` Plätze mit dem Discord und dem Server abgleichen (wer weg ist oder seine Rolle verloren hat, verliert den Platz; neue Namen werden übernommen); `!sync restore` trägt fehlende Plätze auf dem Server nach; `!sync apply` entfernt auch mehr als fünf auf einmal\n" +
 	"`!rcon <befehl>` Befehl auf dem Minecraft-Server\n" +
 	"`!link` Verbindung zum Server-Launcher, `!link accept <fingerprint>`\n" +
 	"`!mc status|start|stop|restart [update]|cmd|console|logs|ls|cat` den Server steuern"
@@ -176,15 +176,19 @@ func (b *Bot) runControl(ctx context.Context, line, by string) string {
 		}
 		return strings.Join(lines, "\n")
 	case "!sync":
-		out, err := b.syncPlaces(ctx)
+		arg := strings.TrimSpace(rest)
+		diff, err := b.restorePlaces(arg == "restore")
 		if err != nil {
-			return "Nachtragen ging nicht: " + err.Error()
+			return "Abgleich mit dem Server ging nicht: " + err.Error()
 		}
-		diff, err := b.restorePlaces(strings.TrimSpace(rest) == "restore")
+		out, err := b.reconcile(ctx, arg == "apply")
 		if err != nil {
-			return out + "\nAbgleich mit dem Server ging nicht: " + err.Error()
+			return diff + "\nAbgleich mit dem Discord ging nicht: " + err.Error()
 		}
-		return out + "\n" + diff
+		if out == "" {
+			out = "Discord und Plätze stimmen überein."
+		}
+		return diff + "\n" + out
 	case "!rcon":
 		if !b.serverConnected() {
 			return "Kein Minecraft-Server verbunden (Launcher oder KW_RCON_ADDR)."

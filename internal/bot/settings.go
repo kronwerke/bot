@@ -8,6 +8,10 @@ import (
 // defaults are the ids of the Kronwerke Discord server. Any of them can be changed at
 // run time with !set in the control channel; the store keeps the override.
 var defaults = map[string]string{
+	// the status embed while the season is being built; !set status.prep changes it without a release
+	"status.prep": "Kronwerke Season 2 wird gerade gebaut. Die Beta läuft im Dezember, der Start ist am 16. Januar.\n" +
+		"Bis dahin testet das Team auf dem Server. Was gerade im Obelisken landet, steht im Fortschritt und auf kronwerke.com.",
+
 	"guild": "1473242451098472482",
 
 	"role.lead":       "1473246853406658777", // Projektleitung

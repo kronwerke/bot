@@ -2,6 +2,8 @@ package bot
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net"
 	"net/http"
@@ -26,6 +28,10 @@ const (
 	curseBudget  = 300 // requests per address per ten minutes
 	curseWindow  = 10 * time.Minute
 	curseMaxBody = 256 << 10
+	// the cache holds at most this many bytes of answers; the oldest go first
+	curseCacheBytes = 64 << 20
+	// a single answer larger than this is passed on but not kept
+	curseCacheItem = 2 << 20
 )
 
 var curseAllowed = []struct {
@@ -48,6 +54,8 @@ type curseProxy struct {
 	mu     sync.Mutex
 	counts map[string][]time.Time
 	cache  map[string]curseCached
+	order  []string // cache keys, oldest first
+	bytes  int
 }
 
 type curseCached struct {
@@ -61,10 +69,13 @@ func newCurseProxy(key string) *curseProxy {
 		counts: map[string][]time.Time{}, cache: map[string]curseCached{}}
 }
 
-// clientIP is the visitor as the reverse proxy in front of the bot saw it.
+// clientIP is the visitor as the reverse proxy in front of the bot saw it: the last entry
+// of X-Forwarded-For, the one that proxy appended. Earlier entries come from the client and
+// would let anyone pick a new address for every request.
 func clientIP(r *http.Request) string {
 	if f := r.Header.Get("X-Forwarded-For"); f != "" {
-		return strings.TrimSpace(strings.Split(f, ",")[0])
+		parts := strings.Split(f, ",")
+		return strings.TrimSpace(parts[len(parts)-1])
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -130,7 +141,8 @@ func (p *curseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		body = b
 	}
-	key := r.Method + " " + path + "?" + r.URL.RawQuery + " " + string(body)
+	sum := sha256.Sum256(body)
+	key := r.Method + " " + path + "?" + r.URL.RawQuery + " " + hex.EncodeToString(sum[:])
 	p.mu.Lock()
 	c, hit := p.cache[key]
 	p.mu.Unlock()
@@ -162,17 +174,33 @@ func (p *curseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "CurseForge answer broke off", http.StatusBadGateway)
 		return
 	}
-	if res.StatusCode == http.StatusOK {
-		p.mu.Lock()
-		if len(p.cache) > 5000 {
-			p.cache = map[string]curseCached{}
-		}
-		p.cache[key] = curseCached{at: time.Now(), status: res.StatusCode, body: out}
-		p.mu.Unlock()
+	if res.StatusCode == http.StatusOK && len(out) <= curseCacheItem {
+		p.keep(key, curseCached{at: time.Now(), status: res.StatusCode, body: out})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(res.StatusCode)
 	w.Write(out)
+}
+
+// keep stores an answer and drops the oldest ones while the cache is over its byte budget.
+func (p *curseProxy) keep(key string, c curseCached) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if old, ok := p.cache[key]; ok {
+		p.bytes -= len(old.body)
+	} else {
+		p.order = append(p.order, key)
+	}
+	p.cache[key] = c
+	p.bytes += len(c.body)
+	for p.bytes > curseCacheBytes && len(p.order) > 0 {
+		k := p.order[0]
+		p.order = p.order[1:]
+		if old, ok := p.cache[k]; ok {
+			p.bytes -= len(old.body)
+			delete(p.cache, k)
+		}
+	}
 }
 
 func queryOf(r *http.Request) string {

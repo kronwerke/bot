@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kronwerke/bot/internal/captcha"
@@ -17,6 +18,7 @@ const (
 	idVerifyNew   = "kw:verify:new"
 	idVerifyModal = "kw:verify:modal"
 	idVerifyCode  = "code"
+	idVerifyHelp  = "kw:verify:help"
 )
 
 func (b *Bot) onMemberJoin(ctx context.Context, m discord.Member) {
@@ -41,35 +43,52 @@ func (b *Bot) ensureVerifyPanel(ctx context.Context) {
 		return
 	}
 	if id := b.store.Setting("msg.verify"); id != "" {
-		msgs, err := b.rest.Messages(ctx, ch, 20)
+		// the stored message itself, however far it scrolled up; only a 404 means it is gone
+		_, err := b.rest.Message(ctx, ch, id)
 		if err == nil {
-			for _, m := range msgs {
-				if m.ID == id {
-					return
+			// a panel from an older version gets the current text and buttons
+			if b.store.Setting("msg.verify.version") != verifyPanelVersion {
+				if _, err := b.rest.EditMessage(ctx, ch, id, verifyPanel()); err == nil {
+					b.store.SetSetting("msg.verify.version", verifyPanelVersion)
 				}
 			}
+			return
+		}
+		if !discord.IsStatus(err, 404) {
+			b.events.add("verify panel check: %v", err)
+			return
 		}
 	}
 	b.postVerifyPanel(ctx)
 }
 
-func (b *Bot) postVerifyPanel(ctx context.Context) {
-	ch := b.setting("channel.verify")
-	msg, err := b.rest.SendMessage(ctx, ch, discord.MessageSend{
+const verifyPanelVersion = "2"
+
+func verifyPanel() discord.MessageSend {
+	return discord.MessageSend{
 		Embeds: []discord.Embed{{
 			Title: "Willkommen bei Kronwerke",
 			Description: "Bevor du den Rest des Servers siehst, einmal kurz bestätigen, dass du ein Mensch bist.\n\n" +
 				"Klick auf **Verifizieren**, lies den Code aus dem Bild ab und tipp ihn ein. Dauert zehn Sekunden.\n\n" +
-				"Klappt etwas nicht, schreib einem Teammitglied.",
+				"Kannst du das Bild nicht lesen (Screenreader, schlechte Sicht), klick auf **Ich kann das Bild nicht lesen**: dann schaltet dich das Team frei.",
 			Color: 0xDAA520,
 		}},
-		Components: []discord.Component{discord.Row(discord.Button(idVerify, "Verifizieren", discord.ButtonSuccess))},
-	})
+		Components: []discord.Component{discord.Row(
+			discord.Button(idVerify, "Verifizieren", discord.ButtonSuccess),
+			discord.Button(idVerifyHelp, "Ich kann das Bild nicht lesen", discord.ButtonSecondary),
+		)},
+	}
+}
+
+func (b *Bot) postVerifyPanel(ctx context.Context) {
+	ch := b.setting("channel.verify")
+	msg, err := b.rest.SendMessage(ctx, ch, verifyPanel())
 	if err != nil {
 		b.fail(ctx, "Verifizierungs-Nachricht", err)
 		return
 	}
 	b.store.SetSetting("msg.verify", msg.ID)
+	b.store.SetSetting("msg.verify.version", verifyPanelVersion)
 	b.events.add("verify panel posted")
 }
 
@@ -83,6 +102,13 @@ func (b *Bot) startCaptcha(ctx context.Context, i *discord.Interaction, update b
 	}
 	if until := b.store.LockedUntil(u.ID); time.Now().Before(until) {
 		b.reply(ctx, i, fmt.Sprintf("Zu viele falsche Versuche. Probier es <t:%d:R> wieder.", until.Unix()))
+		return
+	}
+	if update && !b.allowNewImage(u.ID) {
+		lock := b.duration("captcha.lock", 10*time.Minute)
+		b.store.Fail(u.ID, 1, lock)
+		b.reply(ctx, i, fmt.Sprintf("Sehr viele neue Bilder hintereinander. Probier es <t:%d:R> wieder, oder klick im Kanal auf **Ich kann das Bild nicht lesen**.",
+			time.Now().Add(lock).Unix()))
 		return
 	}
 	code := captcha.Code(5)
@@ -144,7 +170,7 @@ func (b *Bot) checkCaptcha(ctx context.Context, i *discord.Interaction) {
 		n, locked := b.store.Fail(u.ID, b.number("captcha.attempts", 3), b.duration("captcha.lock", 10*time.Minute))
 		b.events.add("captcha wrong for %s (%d)", u.Username, n)
 		if locked {
-			b.reply(ctx, i, "Das war leider falsch, und das war der letzte Versuch. In zehn Minuten geht es wieder.")
+			b.reply(ctx, i, fmt.Sprintf("Das war leider falsch, und das war der letzte Versuch. Es geht <t:%d:R> wieder.", b.store.LockedUntil(u.ID).Unix()))
 			return
 		}
 		b.reply(ctx, i, "Das war leider falsch. Klick auf **Verifizieren** für ein neues Bild.")
@@ -168,6 +194,53 @@ func (b *Bot) checkCaptcha(ctx context.Context, i *discord.Interaction) {
 		text += fmt.Sprintf(" Fang am besten in <#%s> an.", welcome)
 	}
 	b.reply(ctx, i, text)
+}
+
+// newImages counts the "Neues Bild" presses per member over the last ten minutes, so a
+// solver cannot keep asking until it gets an easy image.
+var (
+	newImagesMu sync.Mutex
+	newImages   = map[string][]time.Time{}
+	helpAsked   = map[string]time.Time{}
+)
+
+func (b *Bot) allowNewImage(user string) bool {
+	newImagesMu.Lock()
+	defer newImagesMu.Unlock()
+	cut := time.Now().Add(-10 * time.Minute)
+	var keep []time.Time
+	for _, t := range newImages[user] {
+		if t.After(cut) {
+			keep = append(keep, t)
+		}
+	}
+	if len(keep) >= b.number("captcha.images", 6) {
+		newImages[user] = keep
+		return false
+	}
+	newImages[user] = append(keep, time.Now())
+	return true
+}
+
+// verifyHelp is the way in for members who cannot read the image: the team is asked to
+// let them in by hand.
+func (b *Bot) verifyHelp(ctx context.Context, i *discord.Interaction) {
+	u := i.Actor()
+	if i.Member.HasRole(b.setting("role.member")) {
+		b.reply(ctx, i, "Du bist schon verifiziert.")
+		return
+	}
+	newImagesMu.Lock()
+	last, asked := helpAsked[u.ID]
+	if asked && time.Since(last) < time.Hour {
+		newImagesMu.Unlock()
+		b.reply(ctx, i, "Das Team weiß schon Bescheid und schaltet dich von Hand frei.")
+		return
+	}
+	helpAsked[u.ID] = time.Now()
+	newImagesMu.Unlock()
+	b.control(ctx, fmt.Sprintf("%s (<@%s>) kann das Captcha-Bild nicht lesen und bittet um Freischaltung von Hand: Rolle Mitglied geben, unverified nehmen.", u.Name(), u.ID))
+	b.reply(ctx, i, "Das Team ist informiert und schaltet dich von Hand frei. Das kann ein paar Stunden dauern.")
 }
 
 // reply answers an interaction with an ephemeral text.

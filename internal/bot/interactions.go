@@ -83,6 +83,8 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 			b.startCaptcha(ctx, i, true)
 		case id == idVerifyEnter:
 			b.askCaptchaCode(ctx, i)
+		case id == idVerifyHelp:
+			b.verifyHelp(ctx, i)
 		case id == idApplyOpen:
 			b.openApplication(ctx, i)
 		case strings.HasPrefix(id, idApplyAccept):

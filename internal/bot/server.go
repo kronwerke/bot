@@ -87,15 +87,9 @@ func stateWord(s string) string {
 
 // syncAfterConnect gives places to everyone who linked while the server was away.
 func (b *Bot) syncAfterConnect(ctx context.Context) {
-	out, err := b.syncPlaces(ctx)
-	if err != nil {
-		b.events.add("sync after connect: %v", err)
-		return
-	}
-	if !strings.HasPrefix(out, "Eigene Plätze nachgetragen: 0") {
-		b.control(ctx, out)
-	}
+	// a new world first gets its places back, then the places follow Discord
 	b.restoreAfterConnect(ctx)
+	b.reconcileNow(ctx)
 }
 
 func (b *Bot) serverConnected() bool {

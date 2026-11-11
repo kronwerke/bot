@@ -16,6 +16,37 @@ var mcName = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
 
 var errNoServer = errors.New("der Minecraft-Server ist noch nicht mit dem Bot verbunden")
 
+// uuidIn finds the account UUID in an answer of Kronwerke Core ("... uuid <uuid>").
+var uuidIn = regexp.MustCompile(`uuid ([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`)
+
+func answerUUID(out string) string {
+	if m := uuidIn.FindStringSubmatch(out); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
+
+// streamerRef is how Core finds a streamer: by the UUID of their account when the bot knows
+// it (names change), else by their linked name.
+func (b *Bot) streamerRef(discordID string) string {
+	if g, ok := b.store.Grant(discordID); ok && g.UUID != "" {
+		return g.UUID
+	}
+	return b.store.Link(discordID)
+}
+
+// grantCommand is Core's grant for a place of one's own, with the kind and, once known, the UUID.
+func grantCommand(name string, slots int, kind, uuid string) string {
+	if kind == "" {
+		kind = store.KindSeason1
+	}
+	cmd := fmt.Sprintf("kw admin grant %s %d %s", name, slots, kind)
+	if uuid != "" {
+		cmd += " " + uuid
+	}
+	return cmd
+}
+
 // placeFor says whether a member gets a place of their own on the whitelist when they
 // link a name: streamers with Core's default slots (-1), Season 1 players with s1.slots.
 func (b *Bot) placeFor(m *discord.Member) (kind string, slots int) {
@@ -89,14 +120,11 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 
 // grant gives a member a place of their own on the server and on Discord.
 func (b *Bot) grant(ctx context.Context, u discord.User, name, kind string, slots int) error {
-	cmd := "kw admin grant " + name
-	if slots >= 0 {
-		cmd += fmt.Sprintf(" %d", slots)
-	}
-	if _, err := b.serverCommand(cmd); err != nil {
+	out, err := b.serverCommand(grantCommand(name, slots, kind, ""))
+	if err != nil {
 		return err
 	}
-	b.store.PutGrant(store.Grant{Player: name, DiscordID: u.ID, Kind: kind, Created: time.Now()})
+	b.store.PutGrant(store.Grant{Player: name, DiscordID: u.ID, Kind: kind, UUID: answerUUID(out), Created: time.Now()})
 	if role := b.setting("role.player"); role != "" {
 		b.rest.AddRole(ctx, b.guild(), u.ID, role, "Own whitelist place ("+kind+")")
 	}
@@ -196,13 +224,22 @@ func (b *Bot) whitelistAdd(ctx context.Context, i *discord.Interaction, sub disc
 		b.reply(ctx, i, fmt.Sprintf("**%s** hat schon einen Platz (von <@%s>).", inv.Player, inv.StreamerID))
 		return
 	}
+	// one Discord account, one place: a second name would be a second place for the same person
+	if held := b.store.InvitesOf(target); len(held) > 0 {
+		b.reply(ctx, i, fmt.Sprintf("<@%s> hat schon einen Platz als **%s**.", target, held[0].Player))
+		return
+	}
+	if g, ok := b.store.Grant(target); ok {
+		b.reply(ctx, i, fmt.Sprintf("<@%s> hat schon einen eigenen Platz als **%s**.", target, g.Player))
+		return
+	}
 	b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
-	out, err := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", streamerMC, player))
+	out, err := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(streamer.ID), player))
 	if err != nil {
 		b.rest.EditReply(ctx, i, discord.MessageSend{Content: "Das ging nicht: " + err.Error()})
 		return
 	}
-	b.store.PutInvite(store.Invite{Player: player, DiscordID: target, StreamerID: streamer.ID, Created: time.Now()})
+	b.store.PutInvite(store.Invite{Player: player, DiscordID: target, StreamerID: streamer.ID, UUID: answerUUID(out), Created: time.Now()})
 	b.store.SetLink(target, player)
 	if role := b.setting("role.player"); role != "" {
 		b.rest.AddRole(ctx, b.guild(), target, role, "Whitelisted by "+streamer.Username)
@@ -275,8 +312,11 @@ func (b *Bot) whitelistList(ctx context.Context, i *discord.Interaction) {
 
 // revoke takes a slot back on the server and on Discord.
 func (b *Bot) revoke(ctx context.Context, inv store.Invite, why string) error {
-	streamerMC := b.store.Link(inv.StreamerID)
-	if _, err := b.serverCommand(fmt.Sprintf("kw admin revoke %s %s", streamerMC, inv.Player)); err != nil {
+	cmd := fmt.Sprintf("kw admin revoke %s %s", b.streamerRef(inv.StreamerID), inv.Player)
+	if inv.UUID != "" {
+		cmd += " " + inv.UUID
+	}
+	if _, err := b.serverCommand(cmd); err != nil {
 		return err
 	}
 	b.store.DeleteInvite(inv.Player)
@@ -313,7 +353,11 @@ func (b *Bot) ungrant(ctx context.Context, g store.Grant, why string) error {
 			return err
 		}
 	}
-	if _, err := b.serverCommand("kw admin ungrant " + g.Player); err != nil {
+	cmd := "kw admin ungrant " + g.Player
+	if g.UUID != "" {
+		cmd += " " + g.UUID
+	}
+	if _, err := b.serverCommand(cmd); err != nil {
 		return err
 	}
 	b.store.DeleteGrant(g.DiscordID)
@@ -334,12 +378,12 @@ func (b *Bot) onMemberLeave(ctx context.Context, u discord.User) {
 	b.events.add("leave %s (%s)", u.Username, u.ID)
 	if g, ok := b.store.Grant(u.ID); ok {
 		if err := b.ungrant(ctx, g, "hat den Discord verlassen"); err != nil {
-			b.fail(ctx, fmt.Sprintf("Eigenen Platz von %s nach dem Verlassen entfernen", g.Player), err)
+			b.fail(ctx, fmt.Sprintf("Eigenen Platz von %s nach dem Verlassen entfernen (der Abgleich versucht es wieder)", g.Player), err)
 		}
 	}
 	for _, inv := range b.store.InvitesOf(u.ID) {
 		if err := b.revoke(ctx, inv, "hat den Discord verlassen"); err != nil {
-			b.fail(ctx, fmt.Sprintf("Whitelist-Platz von %s nach dem Verlassen entfernen", inv.Player), err)
+			b.fail(ctx, fmt.Sprintf("Whitelist-Platz von %s nach dem Verlassen entfernen (der Abgleich versucht es wieder)", inv.Player), err)
 			continue
 		}
 		if dm, err := b.rest.CreateDM(ctx, inv.StreamerID); err == nil {

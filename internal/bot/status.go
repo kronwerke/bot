@@ -117,9 +117,8 @@ func (b *Bot) postStatus(ctx context.Context) {
 	var e discord.Embed
 	if b.wip() {
 		e = discord.Embed{Title: "Work in Progress",
-			Description: "Kronwerke Season 2 wird gerade gebaut. Die Beta läuft im Dezember, der Start ist Mitte Januar.\n" +
-				"Bis dahin testet das Team auf dem Server. Was gerade im Obelisken landet, steht im Fortschritt und auf kronwerke.com.",
-			Color: 0x9A6FD6}
+			Description: b.setting("status.prep"),
+			Color:       0x9A6FD6}
 	} else if p.err != nil {
 		e = discord.Embed{Title: "Server offline", Description: "Der Minecraft-Server antwortet gerade nicht.", Color: 0xE74C3C}
 	} else {

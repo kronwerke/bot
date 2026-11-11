@@ -36,6 +36,7 @@ type Grant struct {
 	Player    string    `json:"player"` // Minecraft name
 	DiscordID string    `json:"discord_id"`
 	Kind      string    `json:"kind,omitempty"` // KindStreamer or KindSeason1; empty is Season 1
+	UUID      string    `json:"uuid,omitempty"` // the Minecraft account, as Kronwerke Core answered
 	Created   time.Time `json:"created"`
 }
 
@@ -57,7 +58,8 @@ func (g Grant) Label() string {
 type Invite struct {
 	Player     string    `json:"player"` // Minecraft name
 	DiscordID  string    `json:"discord_id"`
-	StreamerID string    `json:"streamer_id"` // Discord id of the streamer
+	StreamerID string    `json:"streamer_id"`    // Discord id of the streamer
+	UUID       string    `json:"uuid,omitempty"` // the Minecraft account, as Kronwerke Core answered
 	Created    time.Time `json:"created"`
 }
 
@@ -361,6 +363,25 @@ func (s *Store) PutInvite(i Invite) error {
 
 func (s *Store) DeleteInvite(player string) error {
 	return s.update(func(d *data) { delete(d.Invites, lower(player)) })
+}
+
+// RenameInvite moves an invite to the account's new Minecraft name (the UUID stays).
+func (s *Store) RenameInvite(old, name, uuid string) error {
+	return s.update(func(d *data) {
+		i, ok := d.Invites[lower(old)]
+		if !ok {
+			return
+		}
+		delete(d.Invites, lower(old))
+		i.Player = name
+		if uuid != "" {
+			i.UUID = uuid
+		}
+		d.Invites[lower(name)] = i
+		if d.Links[i.DiscordID] == old {
+			d.Links[i.DiscordID] = name
+		}
+	})
 }
 
 // InvitesBy returns the invites of a streamer, or all when streamer is "".

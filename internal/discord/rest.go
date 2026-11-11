@@ -255,6 +255,13 @@ func (r *REST) DeleteMessage(ctx context.Context, channelID, messageID, reason s
 	return r.Do(ctx, http.MethodDelete, "/channels/"+channelID+"/messages/"+messageID, nil, nil, reason)
 }
 
+// Message fetches one message by id.
+func (r *REST) Message(ctx context.Context, channelID, messageID string) (Message, error) {
+	var out Message
+	err := r.Do(ctx, http.MethodGet, "/channels/"+channelID+"/messages/"+messageID, nil, &out, "")
+	return out, err
+}
+
 func (r *REST) Messages(ctx context.Context, channelID string, limit int) ([]Message, error) {
 	var out []Message
 	err := r.Do(ctx, http.MethodGet, fmt.Sprintf("/channels/%s/messages?limit=%d", channelID, limit), nil, &out, "")

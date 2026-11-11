@@ -1,6 +1,7 @@
 // Package update replaces the running binary with the latest GitHub release.
 //
-// A release carries the binary (kronwerke-bot-linux-amd64) and SHA256SUMS. The new
+// A release carries the binary (kronwerke-bot-linux-amd64), SHA256SUMS and its Ed25519
+// signature SHA256SUMS.sig. The signature is checked against the pinned ReleaseKey, the new
 // binary is downloaded next to the current one, checked against the sum, run once with
 // "version" to prove it starts, then swapped in; the old one stays as .prev. A trial
 // file tells deploy/rollback-guard.sh to put .prev back if the new binary keeps dying
@@ -10,7 +11,9 @@ package update
 import (
 	"bufio"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,6 +28,11 @@ import (
 	"time"
 )
 
+// ReleaseKey is the Ed25519 public key the release workflow signs SHA256SUMS with
+// (SHA256SUMS.sig). A release without a valid signature is never installed: whoever can
+// publish a release on the repository still cannot make this binary run their code.
+const ReleaseKey = "ZEQjgaExXr3UULiDXHjYaMVAEt2tD3vupI37zW/934k="
+
 // Asset is the release file name of the binary.
 const Asset = "kronwerke-bot-linux-amd64"
 
@@ -37,6 +45,7 @@ type Updater struct {
 	SkipFile  string // a tag that was rolled back; never installed again
 	Current   string // version of the running binary, like v0.1.0
 	HTTP      *http.Client
+	Key       ed25519.PublicKey // the release key; ReleaseKey when nil (tests set their own)
 
 	etag   string
 	latest Release
@@ -151,13 +160,23 @@ func (r Release) asset(name string) string {
 // Install downloads, verifies and swaps in the release. The caller exits afterwards
 // so the service manager starts the new binary.
 func (u *Updater) Install(ctx context.Context, r Release) error {
-	binURL, sumURL := r.asset(Asset), r.asset("SHA256SUMS")
+	binURL, sumURL, sigURL := r.asset(Asset), r.asset("SHA256SUMS"), r.asset("SHA256SUMS.sig")
 	if binURL == "" || sumURL == "" {
 		return fmt.Errorf("update: release %s lacks %s or SHA256SUMS", r.Tag, Asset)
+	}
+	if sigURL == "" {
+		return fmt.Errorf("update: release %s is not signed (no SHA256SUMS.sig), not installing", r.Tag)
 	}
 	sums, err := u.get(ctx, sumURL, 1<<16)
 	if err != nil {
 		return err
+	}
+	sig, err := u.get(ctx, sigURL, 1<<10)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(u.key(), sums, sig) {
+		return fmt.Errorf("update: the signature of %s does not match the release key, not installing", r.Tag)
 	}
 	want := ""
 	sc := bufio.NewScanner(strings.NewReader(string(sums)))
@@ -205,6 +224,14 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		return fmt.Errorf("update: swap binary: %w", err)
 	}
 	return nil
+}
+
+func (u *Updater) key() ed25519.PublicKey {
+	if u.Key != nil {
+		return u.Key
+	}
+	k, _ := base64.StdEncoding.DecodeString(ReleaseKey)
+	return ed25519.PublicKey(k)
 }
 
 // Rollback puts the previous binary back. The caller exits afterwards.

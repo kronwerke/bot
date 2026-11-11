@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0
+
+Needs Kronwerke Core 0.27.0 (UUIDs and `-1` slots in the admin commands).
+
+- "No Discord, no slot" holds. Every hour, when the bot is ready and when the server connects, the places are compared with the Discord members: who left while the bot restarted, or whose removal failed because the server was down, loses the place then. More than five at once wait for `!sync apply`, so a half answer from Discord cannot empty the whitelist.
+- Roles count as they change. A streamer or Season 1 role given to a member who linked a name brings their place at once; a role taken away takes it, with every slot they gave. Team members keep theirs.
+- Accounts by UUID. The bot keeps the UUID Kronwerke Core answers with every place and sends it with every invite, revoke and ungrant; streamers are found by UUID too. A renamed account keeps its place, the bot takes the new name from the server.
+- One Discord account, one place: `/whitelist add` refuses a member who already has one.
+- Updates install only releases whose SHA256SUMS carries the release key's signature (`SHA256SUMS.sig`, Ed25519, the key is pinned in the binary). A release anyone else publishes is refused.
+- `/api/status` shows the number of players online, no names.
+- CurseForge proxy: the rate limit goes by the address the reverse proxy appended (the last `X-Forwarded-For` entry), and the cache keeps at most 64 MB, oldest first, answers over 2 MB not at all.
+- Captcha: a button for members who cannot read the image (the team frees them by hand), at most six new images per ten minutes, the lockout message names the configured time, and the panel is found by its stored id however far it scrolled up. An older panel gets the new button in place.
+- What the bot posts in the control channel never runs as a command, whatever text it carries.
+- Unknown launchers: at most three wait at once, each for at most 30 minutes, and the same one is announced at most every six hours.
+- The preparation text of the status embed is the setting `status.prep`.
+
 ## 0.6.0
 
 - Places survive a new world. The bot keeps every own place and every slot a streamer gave, Kronwerke Core keeps them in the world. When the server connects and knows no streamer at all, the bot puts every place back (own places first, then the slots). Otherwise it reports what it holds and the server does not, once, in the control channel, since a streamer may have freed a slot in game.

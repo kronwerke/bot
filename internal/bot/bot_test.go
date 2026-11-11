@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/kronwerke/bot/internal/discord"
+	"github.com/kronwerke/bot/internal/store"
 	"github.com/kronwerke/bot/internal/ws"
 )
 
@@ -46,6 +47,8 @@ type fakeDiscord struct {
 	next  int
 	conn  *ws.ServerConn
 	seq   int
+	// members is the answer to GET /guilds/{id}/members when set
+	members string
 }
 
 func newFakeDiscord(t *testing.T) *fakeDiscord {
@@ -98,6 +101,8 @@ func (f *fakeDiscord) api(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"id":%q}`, id)
 	case r.Method == "POST" && strings.HasSuffix(p, "/channels") && strings.HasPrefix(p, "/guilds/"):
 		fmt.Fprintf(w, `{"id":%q}`, id)
+	case r.Method == "GET" && strings.HasSuffix(p, "/members") && f.members != "":
+		w.Write([]byte(f.members))
 	case p == "/users/@me/channels":
 		fmt.Fprintf(w, `{"id":%q}`, id)
 	case r.Method == "PUT" && strings.HasSuffix(p, "/commands"):
@@ -505,7 +510,7 @@ func TestLinkGivesStreamersAndSeason1PlayersAPlaceAndLeavingTakesItBack(t *testi
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	want := []string{"kw admin grant Anna_MC 2", "kw admin grant CarlaLive", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
+	want := []string{"kw admin grant Anna_MC 2 season1", "kw admin grant CarlaLive -1 streamer", "kw admin invite Anna_MC Ben_MC", "kw admin revoke Anna_MC Ben_MC", "kw admin ungrant Anna_MC"}
 	var got []string
 	for _, c := range rc.commands() {
 		if c != "kw admin goals json" && c != "kw admin season json" { // the status loop fetches these for the API
@@ -604,4 +609,69 @@ func TestLauncherLinkIsAcceptedInTheControlChannelAndCarriesCommands(t *testing.
 	}
 	control("!link")
 	f.waitFor(t, "link status", func(c call) bool { return strings.Contains(c.Body, "Angenommen: `"+fp) })
+}
+
+// The hourly pass finds the leaves the bot missed and takes those places back, and holds
+// back when it would take more than a handful at once.
+func TestReconcileTakesBackPlacesOfMembersWhoLeft(t *testing.T) {
+	rc := newFakeRCON(t)
+	f := newFakeDiscord(t)
+	b, err := New(Config{
+		Token: "tok", StatePath: filepath.Join(t.TempDir(), "state.json"),
+		Version: "v0.0.0-test", APIBase: f.rest.URL, RCONAddr: rc.addr, RCONPassword: "pw",
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go b.Run(ctx)
+	f.waitFor(t, "online", func(c call) bool { return strings.Contains(c.Body, "Online") })
+
+	now := time.Now()
+	b.store.SetLink(userID, "Stays")
+	b.store.PutGrant(store.Grant{Player: "Stays", DiscordID: userID, Kind: store.KindStreamer, Created: now})
+	b.store.SetLink("900", "Gone")
+	b.store.PutGrant(store.Grant{Player: "Gone", DiscordID: "900", Kind: store.KindSeason1, Created: now})
+	b.store.PutInvite(store.Invite{Player: "Guest", DiscordID: "901", StreamerID: userID, Created: now})
+	f.mu.Lock()
+	f.members = fmt.Sprintf(`[{"user":{"id":%q,"username":"stays"},"roles":[%q,%q]}]`, userID, defaults["role.member"], defaults["role.streamer"])
+	f.mu.Unlock()
+
+	out, err := b.reconcile(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.store.Grant("900"); ok {
+		t.Fatalf("the place of a member who left is still there: %s", out)
+	}
+	if _, ok := b.store.Invite("Guest"); ok {
+		t.Fatalf("the slot of a member who left is still there: %s", out)
+	}
+	if _, ok := b.store.Grant(userID); !ok {
+		t.Fatal("the member who stayed lost the place")
+	}
+	cmds := strings.Join(rc.commands(), "\n")
+	if !strings.Contains(cmds, "kw admin ungrant Gone") || !strings.Contains(cmds, "kw admin revoke Stays Guest") {
+		t.Fatalf("commands: %s", cmds)
+	}
+
+	// more than five at once wait for !sync apply
+	for k := 0; k < 6; k++ {
+		id := fmt.Sprint(910 + k)
+		b.store.PutGrant(store.Grant{Player: fmt.Sprintf("Left%d", k), DiscordID: id, Kind: store.KindSeason1, Created: now})
+	}
+	out, err = b.reconcile(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.store.Grants()) != 7 || !strings.Contains(out, "!sync apply") {
+		t.Fatalf("removed without asking: %d grants, %s", len(b.store.Grants()), out)
+	}
+	if _, err := b.reconcile(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.store.Grants()) != 1 {
+		t.Fatalf("apply left %d grants", len(b.store.Grants()))
+	}
 }

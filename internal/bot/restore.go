@@ -15,14 +15,21 @@ var lastRestore atomic.Value
 
 // rosterView is what Kronwerke Core prints for "kw admin roster json".
 type rosterView struct {
-	DefaultSlots int `json:"defaultSlots"`
-	Streamers    []struct {
-		Name    string `json:"name"`
-		Granted bool   `json:"granted"`
-		Invited []struct {
-			Name string `json:"name"`
-		} `json:"invited"`
-	} `json:"streamers"`
+	DefaultSlots int              `json:"defaultSlots"`
+	Streamers    []rosterStreamer `json:"streamers"`
+}
+
+type rosterStreamer struct {
+	UUID    string         `json:"uuid"`
+	Name    string         `json:"name"`
+	Granted bool           `json:"granted"`
+	Kind    string         `json:"kind"`
+	Invited []rosterPlayer `json:"invited"`
+}
+
+type rosterPlayer struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
 }
 
 func (b *Bot) roster() (*rosterView, error) {
@@ -41,24 +48,28 @@ func (b *Bot) roster() (*rosterView, error) {
 // (grants) and slots streamers gave (invites). The bot's store outlives a new world, Core's
 // slot data does not, so after a world reset everything shows up here.
 func (b *Bot) missing(r *rosterView) (grants []store.Grant, invites []store.Invite) {
+	// by UUID where the bot knows it, by name for entries from before 0.7
 	granted := map[string]bool{}
-	invited := map[string]bool{} // "streamer/player", lower case
+	invited := map[string]bool{} // player UUID or lower case name
 	for _, s := range r.Streamers {
 		if s.Granted {
 			granted[strings.ToLower(s.Name)] = true
+			granted[strings.ToLower(s.UUID)] = true
 		}
 		for _, i := range s.Invited {
-			invited[strings.ToLower(s.Name)+"/"+strings.ToLower(i.Name)] = true
+			invited[strings.ToLower(i.Name)] = true
+			invited[strings.ToLower(i.UUID)] = true
 		}
 	}
+	delete(granted, "")
+	delete(invited, "")
 	for _, g := range b.store.Grants() {
-		if !granted[strings.ToLower(g.Player)] {
+		if !granted[strings.ToLower(g.UUID)] && !granted[strings.ToLower(g.Player)] {
 			grants = append(grants, g)
 		}
 	}
 	for _, i := range b.store.InvitesBy("") {
-		streamer := b.store.Link(i.StreamerID)
-		if streamer == "" || !invited[strings.ToLower(streamer)+"/"+strings.ToLower(i.Player)] {
+		if !invited[strings.ToLower(i.UUID)] && !invited[strings.ToLower(i.Player)] {
 			invites = append(invites, i)
 		}
 	}
@@ -83,11 +94,11 @@ func (b *Bot) restorePlaces(apply bool) (string, error) {
 			open = append(open, label)
 			continue
 		}
-		cmd := "kw admin grant " + g.Player
+		slots := -1
 		if g.Kind != store.KindStreamer {
-			cmd += fmt.Sprintf(" %d", b.number("s1.slots", 2))
+			slots = b.number("s1.slots", 2)
 		}
-		if _, err := b.serverCommand(cmd); err != nil {
+		if _, err := b.serverCommand(grantCommand(g.Player, slots, g.Kind, g.UUID)); err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", label, err))
 			continue
 		}
@@ -104,7 +115,11 @@ func (b *Bot) restorePlaces(apply bool) (string, error) {
 			open = append(open, label)
 			continue
 		}
-		if _, err := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", streamer, i.Player)); err != nil {
+		cmd := fmt.Sprintf("kw admin invite %s %s", b.streamerRef(i.StreamerID), i.Player)
+		if i.UUID != "" {
+			cmd += " " + i.UUID
+		}
+		if _, err := b.serverCommand(cmd); err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", label, err))
 			continue
 		}
