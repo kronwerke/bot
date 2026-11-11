@@ -51,6 +51,7 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 	mux.HandleFunc("GET /api/status", b.apiStatus)
 	mux.HandleFunc("GET /api/admin/bot", b.adminBot)
 	mux.HandleFunc("POST /api/admin/link", b.adminLink)
+	mux.HandleFunc("POST /api/admin/oauth", b.adminOAuth)
 	if b.cfg.CurseForgeKey != "" {
 		// with methods, like every other pattern here: a bare path next to "GET /" makes the mux panic
 		cp := newCurseProxy(b.cfg.CurseForgeKey)

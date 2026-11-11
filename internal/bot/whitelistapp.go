@@ -81,6 +81,15 @@ func (b *Bot) app() *wlApp {
 	return b.wl
 }
 
+// clientSecret is the app's OAuth2 client secret: from bot.env, else the one set over the
+// admin API (POST /api/admin/oauth).
+func (b *Bot) clientSecret() string {
+	if b.cfg.ClientSecret != "" {
+		return b.cfg.ClientSecret
+	}
+	return b.store.OAuthSecret()
+}
+
 func (b *Bot) publicURL() string {
 	if b.cfg.PublicURL != "" {
 		return strings.TrimRight(b.cfg.PublicURL, "/")
@@ -96,7 +105,7 @@ func (b *Bot) routeApp(mux *http.ServeMux) {
 	})
 	mux.Handle("GET /whitelist/", http.StripPrefix("/whitelist", wlweb.Handler()))
 	mux.HandleFunc("GET /whitelist/api/config", func(w http.ResponseWriter, r *http.Request) {
-		appJSON(w, http.StatusOK, map[string]any{"client_id": b.appID, "ready": b.cfg.ClientSecret != "" && b.appID != ""})
+		appJSON(w, http.StatusOK, map[string]any{"client_id": b.appID, "ready": b.clientSecret() != "" && b.appID != ""})
 	})
 	mux.HandleFunc("POST /whitelist/api/token", b.appToken)
 	mux.HandleFunc("GET /whitelist/login", b.appLogin)
@@ -154,11 +163,67 @@ func randomToken() string {
 
 // ---- signing in ----
 
+// checkSecret asks Discord whether a client secret belongs to the app, with a client
+// credentials grant that gives nothing but a token for the app itself.
+func (b *Bot) checkSecret(ctx context.Context, secret string) error {
+	form := url.Values{"grant_type": {"client_credentials"}, "scope": {"identify"}}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, b.app().oauthAPI+"/oauth2/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(b.appID, secret)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("discord refused the secret: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// adminOAuth sets the client secret without touching bot.env: checked at Discord first,
+// kept in the state file (mode 600), never shown again.
+func (b *Bot) adminOAuth(w http.ResponseWriter, r *http.Request) {
+	if !b.adminAllowed(r) {
+		http.NotFound(w, r)
+		return
+	}
+	var in struct {
+		ClientSecret string `json:"client_secret"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		adminJSON(w, http.StatusBadRequest, map[string]string{"error": "body: " + err.Error()})
+		return
+	}
+	secret := strings.TrimSpace(in.ClientSecret)
+	if b.appID == "" {
+		adminJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not connected to Discord yet"})
+		return
+	}
+	if secret != "" {
+		if err := b.checkSecret(r.Context(), secret); err != nil {
+			adminJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+	if err := b.store.SetOAuthSecret(secret); err != nil {
+		adminJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	what := "gesetzt"
+	if secret == "" {
+		what = "entfernt"
+	}
+	b.control(r.Context(), "Client Secret der Whitelist-App "+what+" (über die Admin-API).")
+	adminJSON(w, http.StatusOK, map[string]any{"ok": true, "ready": b.clientSecret() != "", "from_env": b.cfg.ClientSecret != ""})
+}
+
 // exchange swaps an OAuth code for the person's access token and Discord account.
 func (b *Bot) exchange(ctx context.Context, code, redirect string) (token string, u discord.User, err error) {
 	a := b.app()
 	form := url.Values{
-		"client_id": {b.appID}, "client_secret": {b.cfg.ClientSecret},
+		"client_id": {b.appID}, "client_secret": {b.clientSecret()},
 		"grant_type": {"authorization_code"}, "code": {code},
 	}
 	if redirect != "" {
@@ -222,7 +287,7 @@ func (b *Bot) newSession(user string) string {
 // appToken is the Activity's sign in: the SDK's code in, the access token the SDK needs
 // for authenticate and our own session out.
 func (b *Bot) appToken(w http.ResponseWriter, r *http.Request) {
-	if b.cfg.ClientSecret == "" || b.appID == "" {
+	if b.clientSecret() == "" || b.appID == "" {
 		appError(w, http.StatusServiceUnavailable, "Die Whitelist-App ist noch nicht eingerichtet.")
 		return
 	}
@@ -246,7 +311,7 @@ const stateCookie = "__Host-kw_wl_state"
 
 // appLogin sends a browser to Discord to sign in.
 func (b *Bot) appLogin(w http.ResponseWriter, r *http.Request) {
-	if b.cfg.ClientSecret == "" || b.appID == "" {
+	if b.clientSecret() == "" || b.appID == "" {
 		http.Error(w, "Die Whitelist-App ist noch nicht eingerichtet.", http.StatusServiceUnavailable)
 		return
 	}
@@ -809,7 +874,7 @@ func isID(s string) bool {
 // openApp answers /whitelist verwalten with the Activity. Without Activities switched on
 // in the developer portal Discord refuses that; then the answer is the website link.
 func (b *Bot) openApp(ctx context.Context, i *discord.Interaction) {
-	if b.cfg.ClientSecret != "" {
+	if b.clientSecret() != "" {
 		if err := b.rest.Respond(ctx, i, discord.CallbackLaunchActivity, nil); err == nil {
 			return
 		} else {

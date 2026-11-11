@@ -85,6 +85,7 @@ type data struct {
 	LinkKeys     map[string]LinkKey     `json:"link_keys"` // fingerprint -> key
 	Names        map[string]string      `json:"names"`     // discord id -> name shown on Discord, as of the last /link
 	LinkedAt     map[string]time.Time   `json:"linked_at"` // discord id -> when /link was last used
+	OAuthSecret  string                 `json:"oauth_secret,omitempty"` // the app's OAuth2 client secret when set over the admin API
 }
 
 // Store is safe for concurrent use.
@@ -408,6 +409,18 @@ func (s *Store) InvitesOf(discordID string) (out []Invite) {
 		}
 	})
 	return
+}
+
+// ---- the whitelist app ----
+
+// OAuthSecret is the app's client secret set over the admin API, empty when none.
+func (s *Store) OAuthSecret() (v string) {
+	s.view(func(d *data) { v = d.OAuthSecret })
+	return
+}
+
+func (s *Store) SetOAuthSecret(v string) error {
+	return s.update(func(d *data) { d.OAuthSecret = v })
 }
 
 // ---- grants ----

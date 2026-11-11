@@ -65,6 +65,7 @@ func (b *Bot) adminBot(w http.ResponseWriter, r *http.Request) {
 	if b.site != nil {
 		out["site"] = b.site.Tag()
 	}
+	out["whitelist_app"] = b.clientSecret() != ""
 	adminJSON(w, http.StatusOK, out)
 }
 

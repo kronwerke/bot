@@ -58,6 +58,13 @@ func newWLDiscord(t *testing.T) *wlDiscord {
 		p := r.URL.Path
 		g := "/guilds/" + defaults["guild"] + "/members"
 		switch {
+		case p == "/oauth2/token" && strings.Contains(string(body), "client_credentials"):
+			if u, pw, _ := r.BasicAuth(); u != appID || pw != "right" {
+				w.WriteHeader(401)
+				w.Write([]byte(`{"error":"invalid_client"}`))
+				return
+			}
+			w.Write([]byte(`{"access_token":"app","scope":"identify"}`))
 		case p == "/oauth2/token":
 			if !strings.Contains(string(body), "client_secret=shh") || !strings.Contains(string(body), "code=good") {
 				w.WriteHeader(400)
@@ -140,11 +147,15 @@ func fakeMojang(t *testing.T) *httptest.Server {
 }
 
 func newAppBot(t *testing.T) (*Bot, *wlDiscord, *fakeRCON, http.Handler) {
+	return newAppBotWith(t, "shh")
+}
+
+func newAppBotWith(t *testing.T, secret string) (*Bot, *wlDiscord, *fakeRCON, http.Handler) {
 	d := newWLDiscord(t)
 	rc := newFakeRCON(t)
 	b, err := New(Config{
 		Token: "tok", StatePath: filepath.Join(t.TempDir(), "state.json"), Version: "v0.0.0-test",
-		APIBase: d.srv.URL, RCONAddr: rc.addr, RCONPassword: "pw", ClientSecret: "shh",
+		APIBase: d.srv.URL, RCONAddr: rc.addr, RCONPassword: "pw", ClientSecret: secret, AdminToken: "admintok",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -158,6 +169,7 @@ func newAppBot(t *testing.T) (*Bot, *wlDiscord, *fakeRCON, http.Handler) {
 	b.store.SetLink(wlAlice, "Alice")
 	mux := http.NewServeMux()
 	b.routeApp(mux)
+	mux.HandleFunc("POST /api/admin/oauth", b.adminOAuth)
 	return b, d, rc, mux
 }
 
@@ -395,4 +407,23 @@ func containsPrefix(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestClientSecretOverTheAdminAPI(t *testing.T) {
+	b, _, _, h := newAppBotWith(t, "")
+	if code, _ := appCall(t, h, "POST", "/whitelist/api/token", "", map[string]string{"code": "good"}); code != 503 {
+		t.Fatalf("without a secret: %d", code)
+	}
+	if code, _ := appCall(t, h, "POST", "/api/admin/oauth", "wrong", map[string]string{"client_secret": "right"}); code != 404 {
+		t.Fatalf("without the admin token: %d", code)
+	}
+	if code, out := appCall(t, h, "POST", "/api/admin/oauth", "admintok", map[string]string{"client_secret": "wrong"}); code != 400 || b.clientSecret() != "" {
+		t.Fatalf("a wrong secret: %d %v", code, out)
+	}
+	if code, out := appCall(t, h, "POST", "/api/admin/oauth", "admintok", map[string]string{"client_secret": "right"}); code != 200 || out["ready"] != true {
+		t.Fatalf("the right secret: %d %v", code, out)
+	}
+	if b.clientSecret() != "right" {
+		t.Fatal("not kept")
+	}
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- The client secret of the whitelist app can be set over the admin API (`POST /api/admin/oauth {"client_secret": "..."}`), without editing `bot.env`. Discord checks it first; it is kept in the state file and never shown. `bot.env` wins when both are set. `GET /api/admin/bot` says whether the app is ready.
+
 ## 0.8.0
 
 - The whitelist app: one page for managing whitelist slots, with Minecraft faces. In Discord it opens as an Activity with `/whitelist verwalten`; outside Discord it is at kronwerke.com/whitelist/. Both sign in with Discord (the Activity through the Embedded App SDK, the website through Discord's OAuth page) and follow the same rules as the slash commands.
