@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- The bot follows what the team changed in game or in the admin panel: a slot taken back there leaves the bot too, a player moved to another streamer counts for the new one, and every place keeps its slot count, so a new world gets custom counts and extra slots back. A streamer the server does not know at all (a new world) is left alone. (R3-07, R3-11, R3-12)
+- Old links with ".html" move to the short address.
+
 ## 0.9.0
 
 - The website answers without ".html": kronwerke.com/installieren, /faq, /mods and so on; /fragen and /privacy are short names for the FAQ and the privacy page.

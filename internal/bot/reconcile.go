@@ -243,10 +243,76 @@ func (b *Bot) learnFrom(r *rosterView) string {
 			b.store.RenameInvite(inv.Player, now, id)
 		}
 	}
-	if len(renamed) == 0 {
-		return ""
+	var lines []string
+	if len(renamed) > 0 {
+		lines = append(lines, "Neue Minecraft-Namen übernommen: "+strings.Join(renamed, ", ")+".")
 	}
-	return "Neue Minecraft-Namen übernommen: " + strings.Join(renamed, ", ") + "."
+	if out := b.followRoster(r); out != "" {
+		lines = append(lines, out)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// followRoster takes over what the team changed in game or in the admin panel: a slot
+// taken back there leaves the bot's store too, a player moved to another streamer counts
+// for that streamer, and every place's slot count is kept, so a new world gets it back
+// (review R3-07, R3-11, R3-12). A streamer the server does not know at all (a new world)
+// is left alone: restoring puts their places back.
+func (b *Bot) followRoster(r *rosterView) string {
+	grantOf := func(s rosterStreamer) (store.Grant, bool) {
+		for _, g := range b.store.Grants() {
+			if (g.UUID != "" && strings.EqualFold(g.UUID, s.UUID)) || strings.EqualFold(g.Player, s.Name) {
+				return g, true
+			}
+		}
+		return store.Grant{}, false
+	}
+	known := map[string]rosterStreamer{} // grant discord id -> roster entry
+	at := map[string]rosterStreamer{}    // invited player uuid or lower name -> their streamer
+	for _, s := range r.Streamers {
+		if g, ok := grantOf(s); ok && s.Granted {
+			known[g.DiscordID] = s
+			if s.Slots > 0 && g.Slots != s.Slots {
+				g.Slots = s.Slots
+				b.store.PutGrant(g)
+			}
+		}
+		for _, i := range s.Invited {
+			at[strings.ToLower(i.UUID)] = s
+			at[strings.ToLower(i.Name)] = s
+		}
+	}
+	var gone, moved []string
+	for _, inv := range b.store.InvitesBy("") {
+		s, found := at[strings.ToLower(inv.UUID)]
+		if !found || inv.UUID == "" {
+			s, found = at[strings.ToLower(inv.Player)]
+		}
+		if !found {
+			if _, inviterThere := known[inv.StreamerID]; inviterThere {
+				b.store.DeleteInvite(inv.Player)
+				_, granted := b.store.Grant(inv.DiscordID)
+				if role := b.setting("role.player"); role != "" && len(b.store.InvitesOf(inv.DiscordID)) == 0 && !granted {
+					b.rest.RemoveRole(context.Background(), b.guild(), inv.DiscordID, role, "Slot taken back in game")
+				}
+				gone = append(gone, inv.Player)
+			}
+			continue
+		}
+		if g, ok := grantOf(s); ok && g.DiscordID != inv.StreamerID {
+			inv.StreamerID = g.DiscordID
+			b.store.PutInvite(inv)
+			moved = append(moved, inv.Player+" zu "+s.Name)
+		}
+	}
+	var lines []string
+	if len(gone) > 0 {
+		lines = append(lines, "Im Spiel oder im Panel entfernt, jetzt auch beim Bot: "+strings.Join(gone, ", ")+".")
+	}
+	if len(moved) > 0 {
+		lines = append(lines, "Im Panel umgezogen: "+strings.Join(moved, ", ")+".")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // reconcileNow runs a pass and posts what it changed.

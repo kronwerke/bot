@@ -305,6 +305,17 @@ func (s *Site) Handler() http.Handler {
 			http.Error(w, "The site is not published yet.", http.StatusNotFound)
 			return
 		}
+		// old links with .html land on the short address, so only that one is in use
+		if p := r.URL.Path; strings.HasSuffix(p, ".html") && !strings.HasSuffix(p, "/index.html") {
+			if f, err := os.Stat(filepath.Join(root, filepath.FromSlash(path.Clean(p)))); err == nil && !f.IsDir() {
+				to := strings.TrimSuffix(p, ".html")
+				if r.URL.RawQuery != "" {
+					to += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, to, http.StatusMovedPermanently)
+				return
+			}
+		}
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/fonts/"):
 			w.Header().Set("Cache-Control", "public, max-age=86400")

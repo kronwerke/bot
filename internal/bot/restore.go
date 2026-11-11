@@ -99,11 +99,14 @@ func (b *Bot) restorePlaces(apply bool) (string, error) {
 		if g.Kind != store.KindStreamer {
 			slots = b.number("s1.slots", 2)
 		}
+		if g.Slots > 0 {
+			slots = g.Slots // the count the server had last, the team's changes and extra slots included
+		}
 		if _, err := b.serverCommand(grantCommand(g.Player, slots, g.Kind, g.UUID)); err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", label, err))
 			continue
 		}
-		if g.Bonus > 0 {
+		if g.Bonus > 0 && g.Slots == 0 {
 			if out, err := b.console(fmt.Sprintf("kw admin bonus %s %d", g.Player, g.Bonus)); err != nil || !strings.Contains(out, "now has") {
 				failed = append(failed, fmt.Sprintf("%s: %d Extra-Plätze (%s)", label, g.Bonus, strings.TrimSpace(out+" "+errText(err))))
 			}

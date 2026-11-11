@@ -129,6 +129,9 @@ func TestSyncServesTheLatestReleaseAndSwitchesToTheNextOne(t *testing.T) {
 	if code, body := get(t, h, "/fragen"); code != 200 || !strings.Contains(body, "faq") {
 		t.Fatalf("an alias: %d %q", code, body)
 	}
+	if code, _ := get(t, h, "/installieren.html"); code != http.StatusMovedPermanently {
+		t.Fatalf("an old .html link should move to the short address: %d", code)
+	}
 	if code, _ := get(t, h, "/nothing"); code != http.StatusNotFound {
 		t.Fatalf("an unknown page: %d", code)
 	}

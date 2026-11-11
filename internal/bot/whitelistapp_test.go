@@ -493,3 +493,32 @@ func TestALostRoleWaitsBeforeThePlaceGoes(t *testing.T) {
 		t.Fatal("the mark stayed after the role came back")
 	}
 }
+
+func TestTheBotFollowsChangesMadeInGame(t *testing.T) {
+	b, _, _, _ := newAppBot(t)
+	b.store.PutGrant(store.Grant{Player: "Other", DiscordID: wlCarl, Kind: store.KindStreamer, UUID: "33333333-3333-3333-3333-333333333333", Created: time.Now()})
+	b.store.PutInvite(store.Invite{Player: "Alice", DiscordID: wlAlice, StreamerID: wlStreamer, UUID: "01234567-89ab-cdef-0123-456789abcdef", Created: time.Now()})
+	b.store.PutInvite(store.Invite{Player: "Bobby", DiscordID: wlBob, StreamerID: wlStreamer, UUID: "fedcba98-7654-3210-fedc-ba9876543210", Created: time.Now()})
+	r := &rosterView{Streamers: []rosterStreamer{
+		{UUID: "11111111-1111-1111-1111-111111111111", Name: "StreamerMC", Granted: true, Slots: 7},
+		// Bobby was moved to Other in the panel; Alice was taken back in game
+		{UUID: "33333333-3333-3333-3333-333333333333", Name: "Other", Granted: true, Slots: 5,
+			Invited: []rosterPlayer{{UUID: "fedcba98-7654-3210-fedc-ba9876543210", Name: "Bobby"}}},
+	}}
+	out := b.followRoster(r)
+	if _, ok := b.store.Invite("Alice"); ok {
+		t.Fatalf("a slot taken back in game stayed: %s", out)
+	}
+	if inv, _ := b.store.Invite("Bobby"); inv.StreamerID != wlCarl {
+		t.Fatalf("the move was not followed: %+v", inv)
+	}
+	if g, _ := b.store.Grant(wlStreamer); g.Slots != 7 {
+		t.Fatalf("slot count not kept: %d", g.Slots)
+	}
+	// a streamer the server does not know (a new world) keeps everything
+	b.store.PutInvite(store.Invite{Player: "Kept", DiscordID: "810000000000000008", StreamerID: wlStreamer, Created: time.Now()})
+	b.followRoster(&rosterView{})
+	if _, ok := b.store.Invite("Kept"); !ok {
+		t.Fatal("an empty roster removed an invite")
+	}
+}

@@ -840,6 +840,10 @@ func (b *Bot) decideSlots(ctx context.Context, i *discord.Interaction, rest stri
 		return
 	}
 	b.store.AddBonus(id, n)
+	if g, ok := b.store.Grant(id); ok && g.Slots > 0 {
+		g.Slots += n // the kept count follows, so a new world restores the extra slots too
+		b.store.PutGrant(g)
+	}
 	total := ""
 	if t, ok := b.slotTotal(id); ok {
 		total = fmt.Sprintf(" Jetzt hast du %d.", t)
