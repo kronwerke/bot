@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- The website answers without ".html": kronwerke.com/installieren, /faq, /mods and so on; /fragen and /privacy are short names for the FAQ and the privacy page.
+- `/link` with another account's name no longer moves a streamer's slot by itself. The same account under a new name follows at once (checked at Mojang); another account needs the streamer's yes in a DM, at most one request a day. (R2-09)
+- A streamer or Season 1 role taken away no longer removes the place and every viewer at once. The control channel says when it will happen, with a button that gives the role back; after `role.grace` (24 hours) without the role the place goes as before. (R3-04)
+- A viewer on a streamer's slot who becomes a streamer, or gets the Season 1 role, gets a place of their own: the slot goes back to the streamer first, who is told. Before, the grant was refused and the slot stayed used. (R3-03)
+- The CurseForge proxy counts by the visitor's address from Cloudflare (`CF-Connecting-IP`, trusted only from Caddy on loopback), not by Cloudflare's edge. (R2-10)
+
 ## 0.8.1
 
 - The client secret of the whitelist app can be set over the admin API (`POST /api/admin/oauth {"client_secret": "..."}`), without editing `bot.env`. Discord checks it first; it is kept in the state file and never shown. `bot.env` wins when both are set. `GET /api/admin/bot` says whether the app is ready.

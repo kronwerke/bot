@@ -50,6 +50,16 @@ func (b *Bot) registerCommands(ctx context.Context) error {
 }
 
 func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
+	// the only buttons outside the server: a streamer's answer to a slot move, in a DM
+	if i.GuildID == "" && i.Type == discord.InteractionComponent {
+		switch id := i.Data.CustomID; {
+		case strings.HasPrefix(id, idMoveYes):
+			b.decideMove(ctx, i, strings.TrimPrefix(id, idMoveYes), true)
+		case strings.HasPrefix(id, idMoveNo):
+			b.decideMove(ctx, i, strings.TrimPrefix(id, idMoveNo), false)
+		}
+		return
+	}
 	if i.GuildID != b.guild() {
 		return
 	}
@@ -95,6 +105,8 @@ func (b *Bot) onInteraction(ctx context.Context, i *discord.Interaction) {
 			b.openApplication(ctx, i)
 		case strings.HasPrefix(id, idApplyAccept):
 			b.decideApplication(ctx, i, strings.TrimPrefix(id, idApplyAccept), true)
+		case strings.HasPrefix(id, idRoleBack):
+			b.giveRoleBack(ctx, i, strings.TrimPrefix(id, idRoleBack))
 		case strings.HasPrefix(id, idSlotsAdd):
 			b.decideSlots(ctx, i, strings.TrimPrefix(id, idSlotsAdd), true)
 		case strings.HasPrefix(id, idSlotsNo):

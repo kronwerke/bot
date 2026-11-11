@@ -79,16 +79,11 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		return
 	}
 	kind, slots := b.placeFor(i.Member)
-	// a slot from a streamer moves to the new name, with the same streamer
+	// a slot from a streamer: the same account under a new name follows at once; another
+	// account only when the streamer agrees, at most once a day (review R2-09)
 	if held := b.store.InvitesOf(u.ID); kind == "" && len(held) > 0 && !strings.EqualFold(held[0].Player, name) {
 		b.rest.Respond(ctx, i, discord.CallbackDeferredMessage, map[string]any{"flags": discord.FlagEphemeral})
-		if err := b.moveInvite(ctx, held[0], name); err != nil {
-			b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("Du stehst als **%s** auf der Whitelist; der neue Name ging nicht: %v. Der Streamer oder das Team kann helfen.", held[0].Player, err)})
-			return
-		}
-		b.store.SetLinkName(u.ID, u.Name(), time.Now())
-		go b.pushLinks()
-		b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf("Dein Platz steht jetzt auf **%s** statt **%s**, weiter über <@%s>.", name, held[0].Player, held[0].StreamerID)})
+		b.askMove(ctx, i, u, held[0], name)
 		return
 	}
 	if held := b.store.InvitesOf(u.ID); kind == "" && len(held) > 0 {
@@ -103,7 +98,7 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		b.reply(ctx, i, fmt.Sprintf("Dein Minecraft-Name ist jetzt **%s**. Auf die Whitelist kommst du, wenn dir ein Streamer einen Platz gibt.", name))
 		return
 	}
-	if inv, ok := b.store.Invite(name); ok {
+	if inv, ok := b.store.Invite(name); ok && inv.DiscordID != u.ID {
 		b.reply(ctx, i, fmt.Sprintf("**%s** hat schon einen Platz (von <@%s>).", inv.Player, inv.StreamerID))
 		return
 	}
@@ -118,7 +113,7 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 	b.store.SetLinkName(u.ID, u.Name(), time.Now())
 	b.events.add("link %s -> %s", u.Username, name)
 	defer func() { go b.pushLinks() }()
-	if err := b.grant(ctx, u, name, kind, slots); err != nil {
+	if err := b.promote(ctx, u, name, kind, slots); err != nil {
 		if errors.Is(err, errNoServer) {
 			b.rest.EditReply(ctx, i, discord.MessageSend{Content: fmt.Sprintf(
 				"Dein Minecraft-Name ist jetzt **%s**. Der Server ist noch nicht verbunden. Sobald er läuft, kommst du automatisch auf die Whitelist.", name)})
@@ -132,6 +127,103 @@ func (b *Bot) linkMinecraft(ctx context.Context, i *discord.Interaction) {
 		text = fmt.Sprintf("Willkommen zurück! **%s** ist auf der Whitelist. Danke fürs Spielen in Season 1: Du hast %d eigene Plätze, die du mit `/whitelist add` vergeben kannst.", name, slots)
 	}
 	b.rest.EditReply(ctx, i, discord.MessageSend{Content: text})
+}
+
+const (
+	idMoveYes = "kw:move:yes:" // + discord id + ":" + name
+	idMoveNo  = "kw:move:no:"  // + discord id
+	moveEvery = 24 * time.Hour
+)
+
+// askMove handles /link with a new name for a member who holds a streamer's slot.
+func (b *Bot) askMove(ctx context.Context, i *discord.Interaction, u discord.User, inv store.Invite, name string) {
+	edit := func(text string) { b.rest.EditReply(ctx, i, discord.MessageSend{Content: text}) }
+	lctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	acc, err := b.app().heads.lookup(lctx, name)
+	cancel()
+	if errors.Is(err, errNoAccount) {
+		edit(fmt.Sprintf("Einen Minecraft-Account **%s** gibt es nicht.", name))
+		return
+	}
+	if err == nil && inv.UUID != "" && strings.EqualFold(acc.uuid, inv.UUID) {
+		// the same account, renamed: nothing to ask
+		b.store.RenameInvite(inv.Player, acc.name, acc.uuid)
+		b.store.SetLinkName(u.ID, u.Name(), time.Now())
+		go b.pushLinks()
+		edit(fmt.Sprintf("Dein Account heißt jetzt **%s**, dein Platz bleibt.", acc.name))
+		return
+	}
+	if err == nil {
+		name = acc.name
+	}
+	a := b.app()
+	a.mu.Lock()
+	last, asked := a.moves[u.ID]
+	if asked && time.Since(last) < moveEvery {
+		a.mu.Unlock()
+		edit("Du hast heute schon einen Umzug angefragt. Morgen geht es wieder, oder frag deinen Streamer.")
+		return
+	}
+	a.moves[u.ID] = time.Now()
+	a.mu.Unlock()
+	dm, err := b.rest.CreateDM(ctx, inv.StreamerID)
+	if err == nil {
+		_, err = b.rest.SendMessage(ctx, dm.ID, discord.MessageSend{
+			Content: fmt.Sprintf("**%s** steht über deinen Platz als **%s** auf der Kronwerke-Whitelist und möchte den Platz auf den Minecraft-Account **%s** umziehen. Das ist ein anderer Account. Einverstanden?", u.Name(), inv.Player, name),
+			Components: []discord.Component{discord.Row(
+				discord.Button(idMoveYes+u.ID+":"+name, "Umziehen", discord.ButtonSuccess),
+				discord.Button(idMoveNo+u.ID, "Ablehnen", discord.ButtonSecondary),
+			)},
+		})
+	}
+	if err != nil {
+		a.mu.Lock()
+		delete(a.moves, u.ID)
+		a.mu.Unlock()
+		edit(fmt.Sprintf("Deinen Streamer <@%s> konnte ich nicht erreichen. Bitte ihn, den Platz mit `/whitelist remove` und `/whitelist add` umzutragen.", inv.StreamerID))
+		return
+	}
+	edit(fmt.Sprintf("**%s** ist ein anderer Account als **%s**. Ich habe <@%s> gefragt, ob der Platz umziehen darf. Du bekommst Bescheid.", name, inv.Player, inv.StreamerID))
+}
+
+// decideMove is the streamer's answer in the DM.
+func (b *Bot) decideMove(ctx context.Context, i *discord.Interaction, rest string, yes bool) {
+	id, name := rest, ""
+	if yes {
+		var ok bool
+		id, name, ok = strings.Cut(rest, ":")
+		if !ok || !mcName.MatchString(name) {
+			return
+		}
+	}
+	held := b.store.InvitesOf(id)
+	content := ""
+	if i.Message != nil {
+		content = i.Message.Content
+	}
+	done := func(line string) {
+		b.rest.Respond(ctx, i, discord.CallbackUpdateMessage, discord.MessageSend{Content: content + "\n" + line, Components: []discord.Component{}})
+	}
+	if len(held) == 0 || held[0].StreamerID != i.Actor().ID {
+		done("Dieser Platz ist nicht mehr bei dir.")
+		return
+	}
+	if !yes {
+		done("Abgelehnt.")
+		if dm, err := b.rest.CreateDM(ctx, id); err == nil {
+			b.rest.SendMessage(ctx, dm.ID, discord.MessageSend{Content: fmt.Sprintf("Dein Streamer möchte den Platz nicht umziehen, du bleibst als **%s** eingetragen.", held[0].Player)})
+		}
+		return
+	}
+	if err := b.moveInvite(ctx, held[0], name); err != nil {
+		done("Das ging nicht: " + err.Error())
+		return
+	}
+	go b.pushLinks()
+	done(fmt.Sprintf("Umgezogen auf **%s**.", name))
+	if dm, err := b.rest.CreateDM(ctx, id); err == nil {
+		b.rest.SendMessage(ctx, dm.ID, discord.MessageSend{Content: fmt.Sprintf("Dein Platz steht jetzt auf **%s** statt **%s**.", name, held[0].Player)})
+	}
 }
 
 // moveInvite puts a streamer's slot onto the holder's new Minecraft name: the old name
@@ -156,6 +248,31 @@ func (b *Bot) moveInvite(ctx context.Context, inv store.Invite, name string) err
 	b.store.SetLink(inv.DiscordID, name)
 	if role := b.setting("role.player"); role != "" {
 		b.rest.AddRole(ctx, b.guild(), inv.DiscordID, role, "Whitelist slot moved to a new name")
+	}
+	return nil
+}
+
+// promote gives a member who plays on a streamer's slot a place of their own (they became
+// a streamer, or the Season 1 role came late): the slot goes back to the streamer first,
+// then the place is granted. If the grant fails the slot is given back (review R3-03).
+func (b *Bot) promote(ctx context.Context, u discord.User, name, kind string, slots int) error {
+	inv, invited := b.store.Invite(name)
+	if !invited || inv.DiscordID != u.ID {
+		return b.grant(ctx, u, name, kind, slots)
+	}
+	if err := b.revoke(ctx, inv, "hat jetzt einen eigenen Platz"); err != nil {
+		return err
+	}
+	if err := b.grant(ctx, u, name, kind, slots); err != nil {
+		if out, err2 := b.serverCommand(fmt.Sprintf("kw admin invite %s %s", b.streamerRef(inv.StreamerID), inv.Player)); err2 == nil {
+			inv.UUID = answerUUID(out)
+			b.store.PutInvite(inv)
+		}
+		return err
+	}
+	if dm, err := b.rest.CreateDM(ctx, inv.StreamerID); err == nil {
+		b.rest.SendMessage(ctx, dm.ID, discord.MessageSend{Content: fmt.Sprintf(
+			"**%s** hat jetzt einen eigenen Platz auf der Whitelist. Dein Platz, den du an %s vergeben hattest, ist wieder frei.", name, u.Name())})
 	}
 	return nil
 }
@@ -205,10 +322,10 @@ func (b *Bot) syncPlaces(ctx context.Context) (string, error) {
 		if kind == "" {
 			continue
 		}
-		if _, ok := b.store.Invite(name); ok {
-			continue
+		if inv, ok := b.store.Invite(name); ok && inv.DiscordID != m.User.ID {
+			continue // the name is someone else's slot
 		}
-		if err := b.grant(ctx, *m.User, name, kind, slots); err != nil {
+		if err := b.promote(ctx, *m.User, name, kind, slots); err != nil {
 			if errors.Is(err, errNoServer) {
 				return "", err
 			}

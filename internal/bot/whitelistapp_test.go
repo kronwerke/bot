@@ -2,6 +2,7 @@ package bot
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kronwerke/bot/internal/discord"
 	"github.com/kronwerke/bot/internal/store"
 )
 
@@ -425,5 +427,69 @@ func TestClientSecretOverTheAdminAPI(t *testing.T) {
 	}
 	if b.clientSecret() != "right" {
 		t.Fatal("not kept")
+	}
+}
+
+func TestLinkToAnotherAccountNeedsTheStreamer(t *testing.T) {
+	b, d, rc, _ := newAppBot(t)
+	ctx := context.Background()
+	alice := store.Invite{Player: "Alice", DiscordID: wlAlice, StreamerID: wlStreamer, UUID: "01234567-89ab-cdef-0123-456789abcdef", Created: time.Now()}
+	b.store.PutInvite(alice)
+	ia := &discord.Interaction{ID: "1", Token: "tok", ApplicationID: appID, GuildID: defaults["guild"]}
+	u := discord.User{ID: wlAlice, Username: "alice"}
+
+	// another account: the streamer is asked, nothing moves yet
+	b.askMove(ctx, ia, u, alice, "bobby")
+	if !d.sent(idMoveYes + wlAlice + ":Bobby") {
+		t.Fatal("the streamer was not asked")
+	}
+	if containsPrefix(rc.commands(), "kw admin invite") {
+		t.Fatalf("moved without the streamer: %v", rc.commands())
+	}
+	// once a day
+	before := strings.Count(strings.Join(d.posts, "\n"), idMoveYes)
+	b.askMove(ctx, ia, u, alice, "bobby")
+	if strings.Count(strings.Join(d.posts, "\n"), idMoveYes) != before {
+		t.Fatal("asked twice on one day")
+	}
+	// someone else pressing the button changes nothing
+	other := &discord.Interaction{ID: "2", Token: "tok", ApplicationID: appID, User: &discord.User{ID: wlBob}, Message: &discord.Message{Content: "x"}}
+	b.decideMove(ctx, other, wlAlice+":Bobby", true)
+	if containsPrefix(rc.commands(), "kw admin invite") {
+		t.Fatal("moved by someone who is not the streamer")
+	}
+	// the streamer agrees
+	yes := &discord.Interaction{ID: "3", Token: "tok", ApplicationID: appID, User: &discord.User{ID: wlStreamer}, Message: &discord.Message{Content: "x"}}
+	b.decideMove(ctx, yes, wlAlice+":Bobby", true)
+	if !contains(rc.commands(), "kw admin invite StreamerMC Bobby") {
+		t.Fatalf("not moved: %v", rc.commands())
+	}
+	if _, ok := b.store.Invite("Bobby"); !ok {
+		t.Fatal("the store does not have the new name")
+	}
+
+	// the same account under a new name follows without asking
+	b.store.PutInvite(store.Invite{Player: "OldName", DiscordID: wlCarl, StreamerID: wlStreamer, UUID: "fedcba98-7654-3210-fedc-ba9876543210", Created: time.Now()})
+	n := len(rc.commands())
+	held, _ := b.store.Invite("OldName")
+	b.askMove(ctx, ia, discord.User{ID: wlCarl, Username: "carl"}, held, "bobby")
+	if _, ok := b.store.Invite("OldName"); ok || len(rc.commands()) != n {
+		t.Fatalf("a rename should only update the store: %v", rc.commands()[n:])
+	}
+}
+
+func TestALostRoleWaitsBeforeThePlaceGoes(t *testing.T) {
+	b, _, rc, _ := newAppBot(t)
+	ctx := context.Background()
+	noRole := discord.Member{User: &discord.User{ID: wlStreamer, Username: "streamerin"}, Roles: []string{defaults["role.member"]}}
+	b.onMemberUpdate(ctx, noRole)
+	g, _ := b.store.Grant(wlStreamer)
+	if g.RoleLost.IsZero() || containsPrefix(rc.commands(), "kw admin ungrant") {
+		t.Fatalf("the place went at once: %v", rc.commands())
+	}
+	// the role comes back: nothing happened
+	b.onMemberUpdate(ctx, discord.Member{User: noRole.User, Roles: []string{defaults["role.member"], defaults["role.streamer"]}})
+	if g, _ := b.store.Grant(wlStreamer); !g.RoleLost.IsZero() {
+		t.Fatal("the mark stayed after the role came back")
 	}
 }

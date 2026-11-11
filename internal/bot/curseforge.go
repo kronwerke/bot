@@ -73,13 +73,22 @@ func newCurseProxy(key string) *curseProxy {
 // of X-Forwarded-For, the one that proxy appended. Earlier entries come from the client and
 // would let anyone pick a new address for every request.
 func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	// Cloudflare, then Caddy on this machine: Caddy appends Cloudflare's edge to
+	// X-Forwarded-For, so everyone behind one edge would share a budget. Cloudflare's own
+	// header names the visitor and is overwritten by Cloudflare, and only Cloudflare reaches
+	// Caddy (client certificate), so it is trusted when the request comes from loopback.
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); net.ParseIP(cf) != nil {
+			return cf
+		}
+	}
 	if f := r.Header.Get("X-Forwarded-For"); f != "" {
 		parts := strings.Split(f, ",")
 		return strings.TrimSpace(parts[len(parts)-1])
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
 	}
 	return host
 }

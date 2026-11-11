@@ -322,9 +322,24 @@ func (s *Site) Handler() http.Handler {
 // noListing hides directory listings: a folder without index.html is a 404.
 type noListing struct{ fs http.FileSystem }
 
+// aliases are short addresses for pages that are named otherwise.
+var aliases = map[string]string{
+	"/fragen":  "/faq.html",
+	"/privacy": "/datenschutz.html",
+}
+
 func (n noListing) Open(name string) (http.File, error) {
 	f, err := n.fs.Open(name)
 	if err != nil {
+		// kronwerke.com/installieren for installieren.html: links in Discord read better
+		if alias, ok := aliases[strings.TrimSuffix(name, "/")]; ok {
+			return n.fs.Open(alias)
+		}
+		if path.Ext(name) == "" && !strings.HasSuffix(name, "/") {
+			if page, err2 := n.fs.Open(name + ".html"); err2 == nil {
+				return page, nil
+			}
+		}
 		return nil, err
 	}
 	st, err := f.Stat()

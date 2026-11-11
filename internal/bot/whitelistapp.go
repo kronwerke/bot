@@ -63,6 +63,7 @@ type wlApp struct {
 	all      []discord.Member
 	allAt    time.Time
 	asked    map[string]time.Time // discord id -> last "mehr Plätze" request
+	moves    map[string]time.Time // discord id -> last request to move a slot to another account
 	heads    *heads
 	oauthAPI string // Discord's API base for the token exchange and /users/@me
 }
@@ -75,7 +76,7 @@ func (b *Bot) app() *wlApp {
 		}
 		b.wl = &wlApp{
 			sessions: map[string]*appSession{}, members: map[string]cachedMember{},
-			asked: map[string]time.Time{}, heads: newHeads(), oauthAPI: base,
+			asked: map[string]time.Time{}, moves: map[string]time.Time{}, heads: newHeads(), oauthAPI: base,
 		}
 	})
 	return b.wl

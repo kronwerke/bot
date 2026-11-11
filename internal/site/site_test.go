@@ -99,6 +99,8 @@ func TestSyncServesTheLatestReleaseAndSwitchesToTheNextOne(t *testing.T) {
 		{name: "./index.html", body: "<h1>one</h1>"},
 		{name: "./css/site.css", body: "body{}"},
 		{name: "./js/", dir: true},
+		{name: "./installieren.html", body: "<!doctype html><h1>install</h1>"},
+		{name: "./faq.html", body: "<!doctype html><h1>faq</h1>"},
 	})}
 	srv := g.server(t)
 	dir := t.TempDir()
@@ -120,6 +122,15 @@ func TestSyncServesTheLatestReleaseAndSwitchesToTheNextOne(t *testing.T) {
 	}
 	if code, _ := get(t, h, "/js/"); code != http.StatusNotFound {
 		t.Fatalf("a folder without index.html must not be listed, got %d", code)
+	}
+	if code, body := get(t, h, "/installieren"); code != 200 || !strings.Contains(body, "install") {
+		t.Fatalf("a page without .html: %d %q", code, body)
+	}
+	if code, body := get(t, h, "/fragen"); code != 200 || !strings.Contains(body, "faq") {
+		t.Fatalf("an alias: %d %q", code, body)
+	}
+	if code, _ := get(t, h, "/nothing"); code != http.StatusNotFound {
+		t.Fatalf("an unknown page: %d", code)
 	}
 
 	// nothing new: no download, same tag

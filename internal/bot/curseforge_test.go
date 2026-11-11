@@ -80,3 +80,21 @@ func TestCurseProxyRoutesNextToTheSite(t *testing.T) {
 		t.Fatalf("the proxy should answer: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestClientIPTrustsCloudflareOnlyFromLoopback(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/curseforge/x", nil)
+	r.RemoteAddr = "127.0.0.1:5555"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9, 172.70.1.1")
+	r.Header.Set("CF-Connecting-IP", "203.0.113.9")
+	if got := clientIP(r); got != "203.0.113.9" {
+		t.Fatalf("behind Caddy: %q", got)
+	}
+	r.RemoteAddr = "198.51.100.7:5555" // not through Caddy: the header is not trusted
+	if got := clientIP(r); got != "172.70.1.1" {
+		t.Fatalf("direct: %q", got)
+	}
+	r.Header.Del("X-Forwarded-For")
+	if got := clientIP(r); got != "198.51.100.7" {
+		t.Fatalf("direct without proxy headers: %q", got)
+	}
+}

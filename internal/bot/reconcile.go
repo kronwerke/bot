@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kronwerke/bot/internal/discord"
 	"github.com/kronwerke/bot/internal/store"
@@ -52,9 +53,19 @@ func (b *Bot) reconcile(ctx context.Context, apply bool) (string, error) {
 				return b.ungrant(ctx, g, "nicht mehr auf dem Discord")
 			}})
 		case b.lostRole(m, g):
+			if g.RoleLost.IsZero() {
+				b.markRoleLost(ctx, g)
+				continue
+			}
+			if time.Since(g.RoleLost) < b.roleGrace() {
+				continue
+			}
 			gone = append(gone, removal{g.Player + " (eigener Platz, Rolle " + g.Label() + " weg)", func() error {
 				return b.ungrant(ctx, g, "Rolle "+g.Label()+" entzogen")
 			}})
+		case !g.RoleLost.IsZero():
+			g.RoleLost = time.Time{}
+			b.store.PutGrant(g)
 		}
 	}
 	for _, inv := range b.store.InvitesBy("") {
@@ -95,6 +106,64 @@ func (b *Bot) reconcile(ctx context.Context, apply bool) (string, error) {
 		lines = append(lines, out)
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+const idRoleBack = "kw:roleback:" // + discord id
+
+// roleGrace is how long a place waits for its role to come back (setting role.grace, 24h).
+func (b *Bot) roleGrace() time.Duration {
+	if d, err := time.ParseDuration(b.setting("role.grace")); err == nil && d >= 0 {
+		return d
+	}
+	return 24 * time.Hour
+}
+
+// markRoleLost starts the grace period and tells the team, with a button that gives the role back.
+func (b *Bot) markRoleLost(ctx context.Context, g store.Grant) {
+	g.RoleLost = time.Now()
+	b.store.PutGrant(g)
+	n := len(b.store.InvitesBy(g.DiscordID))
+	role := b.setting("role.season1")
+	if g.Kind == store.KindStreamer {
+		role = b.setting("role.streamer")
+	}
+	ch := b.setting("channel.control")
+	if ch == "" {
+		return
+	}
+	b.rest.SendMessage(ctx, ch, discord.MessageSend{
+		Content: fmt.Sprintf("**%s** (<@%s>) hat die Rolle %s nicht mehr. Wenn sie bis <t:%d:f> nicht zurück ist, gehen der eigene Platz und %d vergebene Plätze von der Whitelist.",
+			g.Player, g.DiscordID, g.Label(), g.RoleLost.Add(b.roleGrace()).Unix(), n),
+		AllowedMentions: discord.NoMentions,
+		Components: []discord.Component{discord.Row(
+			discord.Button(idRoleBack+g.DiscordID+":"+role, "Rolle zurückgeben", discord.ButtonPrimary),
+		)},
+	})
+}
+
+// giveRoleBack is the team's button: the role comes back, and with it the place stays.
+func (b *Bot) giveRoleBack(ctx context.Context, i *discord.Interaction, rest string) {
+	if !b.isTeam(i.Member) {
+		b.reply(ctx, i, "Das kann nur das Team.")
+		return
+	}
+	id, role, ok := strings.Cut(rest, ":")
+	if !ok {
+		return
+	}
+	if err := b.rest.AddRole(ctx, b.guild(), id, role, "Role given back by "+i.Actor().Username); err != nil {
+		b.reply(ctx, i, "Die Rolle ließ sich nicht zurückgeben: "+err.Error())
+		return
+	}
+	if g, ok := b.store.Grant(id); ok {
+		g.RoleLost = time.Time{}
+		b.store.PutGrant(g)
+	}
+	content := ""
+	if i.Message != nil {
+		content = i.Message.Content
+	}
+	b.rest.Respond(ctx, i, discord.CallbackUpdateMessage, discord.MessageSend{Content: content + "\nRolle zurückgegeben von " + i.Actor().Name() + ", der Platz bleibt.", Components: []discord.Component{}, AllowedMentions: discord.NoMentions})
 }
 
 // lostRole says whether a place of one's own no longer has the role it was given for.
@@ -202,10 +271,16 @@ func (b *Bot) onMemberUpdate(ctx context.Context, m discord.Member) {
 		return
 	}
 	if g, ok := b.store.Grant(m.User.ID); ok {
-		if b.lostRole(&m, g) {
-			if err := b.ungrant(ctx, g, "Rolle "+g.Label()+" entzogen"); err != nil {
-				b.fail(ctx, fmt.Sprintf("Eigenen Platz von %s nach dem Rollenwechsel entfernen (der Abgleich versucht es wieder)", g.Player), err)
-			}
+		// a role taken away by mistake, or one synced from Twitch that flickers, must not
+		// throw out a streamer and all their viewers at once: the place goes only when the
+		// role is still missing after the grace period (review R3-04)
+		switch lost := b.lostRole(&m, g); {
+		case lost && g.RoleLost.IsZero():
+			b.markRoleLost(ctx, g)
+		case !lost && !g.RoleLost.IsZero():
+			g.RoleLost = time.Time{}
+			b.store.PutGrant(g)
+			b.control(ctx, fmt.Sprintf("%s (<@%s>) hat die Rolle wieder, der Platz bleibt.", g.Player, g.DiscordID))
 		}
 		return
 	}
@@ -217,10 +292,10 @@ func (b *Bot) onMemberUpdate(ctx context.Context, m discord.Member) {
 	if kind == "" {
 		return
 	}
-	if _, ok := b.store.Invite(name); ok {
+	if inv, ok := b.store.Invite(name); ok && inv.DiscordID != m.User.ID {
 		return
 	}
-	if err := b.grant(ctx, *m.User, name, kind, slots); err != nil {
+	if err := b.promote(ctx, *m.User, name, kind, slots); err != nil {
 		b.fail(ctx, fmt.Sprintf("Eigenen Platz für %s nach der neuen Rolle geben", name), err)
 	}
 }

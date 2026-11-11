@@ -35,9 +35,11 @@ type Application struct {
 type Grant struct {
 	Player    string    `json:"player"` // Minecraft name
 	DiscordID string    `json:"discord_id"`
-	Kind      string    `json:"kind,omitempty"`  // KindStreamer or KindSeason1; empty is Season 1
-	UUID      string    `json:"uuid,omitempty"`  // the Minecraft account, as Kronwerke Core answered
-	Bonus     int       `json:"bonus,omitempty"` // extra slots the team gave on request, kept across new worlds
+	Kind      string    `json:"kind,omitempty"`      // KindStreamer or KindSeason1; empty is Season 1
+	UUID      string    `json:"uuid,omitempty"`      // the Minecraft account, as Kronwerke Core answered
+	Bonus     int       `json:"bonus,omitempty"`     // extra slots the team gave on request, kept across new worlds
+	Slots     int       `json:"slots,omitempty"`     // the slot count the team set in game, kept across new worlds; 0 is the default
+	RoleLost  time.Time `json:"role_lost,omitempty"` // when the role the place was given for went away; removed after a grace period
 	Created   time.Time `json:"created"`
 }
 
