@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2
+
+- A new website release whose files CI has not attached yet no longer reports "Website-Update fehlgeschlagen". The bot waits up to 15 minutes for site.tar.gz and SHA256SUMS and tries again on the next round; only after that it counts as an error.
+
 ## 0.9.1
 
 - The bot follows what the team changed in game or in the admin panel: a slot taken back there leaves the bot too, a player moved to another streamer counts for the new one, and every place keeps its slot count, so a new world gets custom counts and extra slots back. A streamer the server does not know at all (a new world) is left alone. (R3-07, R3-11, R3-12)

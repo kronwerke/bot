@@ -31,6 +31,10 @@ import (
 // Archive is the release file with the built site.
 const Archive = "site.tar.gz"
 
+// AssetGrace is how long a new release may go without its files before that counts as
+// an error.
+const AssetGrace = 15 * time.Minute
+
 const (
 	maxArchive = 64 << 20  // compressed
 	maxFiles   = 2000      // files in the archive
@@ -55,9 +59,10 @@ type Site struct {
 
 // Release is the part of a GitHub release Sync reads.
 type Release struct {
-	Tag    string `json:"tag_name"`
-	Draft  bool   `json:"draft"`
-	Assets []struct {
+	Tag       string    `json:"tag_name"`
+	Draft     bool      `json:"draft"`
+	Published time.Time `json:"published_at"`
+	Assets    []struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
 	} `json:"assets"`
@@ -116,6 +121,11 @@ func (s *Site) Sync(ctx context.Context) (string, bool, error) {
 	}
 	archURL, sumURL := r.asset(Archive), r.asset("SHA256SUMS")
 	if archURL == "" || sumURL == "" {
+		// CI attaches the files about a minute after the tag; until then the release
+		// is not broken, just not finished
+		if !r.Published.IsZero() && time.Since(r.Published) < AssetGrace {
+			return s.Tag(), false, nil
+		}
 		return s.Tag(), false, fmt.Errorf("site: release %s lacks %s or SHA256SUMS", r.Tag, Archive)
 	}
 	sums, err := s.get(ctx, sumURL, 1<<16)

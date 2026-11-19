@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type file struct {
@@ -50,10 +51,12 @@ func archive(t *testing.T, files []file) []byte {
 
 // github fakes the releases API and the downloads for one release at a time.
 type github struct {
-	tag  string
-	arch []byte
-	sum  string
-	hits int
+	tag       string
+	arch      []byte
+	sum       string
+	hits      int
+	bare      bool      // the release has no files yet
+	published time.Time // zero: not sent
 }
 
 func (g *github) server(t *testing.T) *httptest.Server {
@@ -62,12 +65,16 @@ func (g *github) server(t *testing.T) *httptest.Server {
 		switch r.URL.Path {
 		case "/repos/kronwerke/website/releases/latest":
 			g.hits++
-			etag := `"` + g.tag + `"`
+			etag := fmt.Sprintf(`"%s-%v"`, g.tag, g.bare)
 			if r.Header.Get("If-None-Match") == etag {
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 			w.Header().Set("ETag", etag)
+			if g.bare {
+				fmt.Fprintf(w, `{"tag_name":%q,"published_at":%q,"assets":[]}`, g.tag, g.published.UTC().Format(time.RFC3339))
+				return
+			}
 			fmt.Fprintf(w, `{"tag_name":%q,"assets":[{"name":"site.tar.gz","browser_download_url":"%s/dl/site.tar.gz"},{"name":"SHA256SUMS","browser_download_url":"%s/dl/SHA256SUMS"}]}`, g.tag, srv.URL, srv.URL)
 		case "/dl/site.tar.gz":
 			w.Write(g.arch)
@@ -198,5 +205,27 @@ func TestSyncRetriesAfterAFailedDownload(t *testing.T) {
 	g.sum = "" // fixed; GitHub still answers 304 for the same release
 	if tag, changed, err := s.Sync(context.Background()); err != nil || !changed || tag != "v1.0.0" {
 		t.Fatalf("retry: %q %v %v", tag, changed, err)
+	}
+}
+
+func TestSyncWaitsForTheFilesOfAFreshRelease(t *testing.T) {
+	g := &github{tag: "v1.0.0", arch: archive(t, []file{{name: "index.html", body: "ok"}}), bare: true, published: time.Now().Add(-time.Minute)}
+	srv := g.server(t)
+	s := &Site{Repo: "kronwerke/website", API: srv.URL, Dir: t.TempDir(), UserAgent: "test"}
+	if tag, changed, err := s.Sync(context.Background()); err != nil || changed || tag != "" {
+		t.Fatalf("a fresh release without files should wait quietly: %q %v %v", tag, changed, err)
+	}
+	g.bare = false // CI attached the files
+	if tag, changed, err := s.Sync(context.Background()); err != nil || !changed || tag != "v1.0.0" {
+		t.Fatalf("after the files came: %q %v %v", tag, changed, err)
+	}
+}
+
+func TestSyncComplainsWhenTheFilesNeverCome(t *testing.T) {
+	g := &github{tag: "v1.0.0", bare: true, published: time.Now().Add(-time.Hour)}
+	srv := g.server(t)
+	s := &Site{Repo: "kronwerke/website", API: srv.URL, Dir: t.TempDir(), UserAgent: "test"}
+	if _, _, err := s.Sync(context.Background()); err == nil || !strings.Contains(err.Error(), "lacks") {
+		t.Fatalf("want the lacks error, got %v", err)
 	}
 }
