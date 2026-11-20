@@ -285,7 +285,9 @@ func (b *Bot) cachedRoster() *rosterView {
 func (b *Bot) apiMe(w http.ResponseWriter, r *http.Request) {
 	s, h, ok := b.webUser(r)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
+		// every page asks this, and most visitors are not signed in: that is an answer,
+		// not an error in the browser's console
+		writeJSON(w, http.StatusOK, map[string]string{"name": ""})
 		return
 	}
 	// a browser in use stays signed in: once a day the session and its cookie start over
@@ -309,7 +311,7 @@ func (b *Bot) apiMe(w http.ResponseWriter, r *http.Request) {
 func (b *Bot) apiMeQuests(w http.ResponseWriter, r *http.Request) {
 	s, _, ok := b.webUser(r)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
+		writeJSON(w, http.StatusOK, map[string]string{"name": ""})
 		return
 	}
 	b.web.mu.Lock()

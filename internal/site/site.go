@@ -52,7 +52,8 @@ type Site struct {
 	syncMu sync.Mutex // one Sync at a time
 	mu     sync.RWMutex
 	tag    string
-	root   string // directory of the current version
+	root   string   // directory of the current version
+	files  *catalog // what is in root, nil when it could not be read
 	etag   string
 	cached Release // the answer that goes with etag
 }
@@ -94,8 +95,9 @@ func (s *Site) Load() {
 	tag := strings.TrimSpace(string(b))
 	root := filepath.Join(s.Dir, "v-"+safe(tag))
 	if st, err := os.Stat(root); err == nil && st.IsDir() {
+		files, _ := survey(root)
 		s.mu.Lock()
-		s.tag, s.root = tag, root
+		s.tag, s.root, s.files = tag, root, files
 		s.mu.Unlock()
 	}
 }
@@ -167,9 +169,11 @@ func (s *Site) Sync(ctx context.Context) (string, bool, error) {
 		return s.Tag(), false, err
 	}
 
+	// without the catalog the site is still served, only uncompressed
+	files, _ := survey(root)
 	s.mu.Lock()
 	old := s.root
-	s.tag, s.root = r.Tag, root
+	s.tag, s.root, s.files = r.Tag, root, files
 	s.mu.Unlock()
 	if old != "" && old != root {
 		os.RemoveAll(old)
@@ -304,12 +308,13 @@ func safe(tag string) string {
 	}, tag)
 }
 
-// Handler serves the current version. Pages are revalidated after five minutes, fonts
-// and scripts after an hour.
+// Handler serves the current version. Text goes out compressed, every file carries a
+// fingerprint of its content as ETag, and how long a browser keeps a file depends on what
+// it is (see lifetime).
 func (s *Site) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
-		root := s.root
+		root, files := s.root, s.files
 		s.mu.RUnlock()
 		if root == "" {
 			http.Error(w, "The site is not published yet.", http.StatusNotFound)
@@ -326,16 +331,16 @@ func (s *Site) Handler() http.Handler {
 				return
 			}
 		}
-		switch {
-		case strings.HasPrefix(r.URL.Path, "/fonts/"):
-			w.Header().Set("Cache-Control", "public, max-age=86400")
-		case strings.HasPrefix(r.URL.Path, "/css/"), strings.HasPrefix(r.URL.Path, "/js/"):
-			w.Header().Set("Cache-Control", "public, max-age=3600")
-		default:
-			w.Header().Set("Cache-Control", "public, max-age=300")
-		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// a browser that was here once comes back over https for a year
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		if files == nil {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+			guard(w.Header())
+		} else if files.serve(w, r) {
+			return
+		}
 		http.FileServer(noListing{http.Dir(root)}).ServeHTTP(w, r)
 	})
 }

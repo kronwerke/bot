@@ -229,3 +229,144 @@ func TestSyncComplainsWhenTheFilesNeverCome(t *testing.T) {
 		t.Fatalf("want the lacks error, got %v", err)
 	}
 }
+
+func ask(t *testing.T, h http.Handler, path string, header ...string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func unzip(t *testing.T, b []byte) string {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestTextIsCompressedAndUnchangedFilesStayCached(t *testing.T) {
+	css := "body{color:red}\n" + strings.Repeat(".scene img{height:calc(var(--h)*var(--b))}\n", 200)
+	page := "<!doctype html><h1>install</h1>" + strings.Repeat("<p>Schritt für Schritt.</p>", 100)
+	png := "\x89PNG" + strings.Repeat("\x00\x17\x2a\xff", 300)
+	files := []file{
+		{name: "index.html", body: "<h1>one</h1>"},
+		{name: "installieren.html", body: page},
+		{name: "faq.html", body: page + "faq"},
+		{name: "css/site.css", body: css},
+		{name: "img/mobs/fox.png", body: png},
+		{name: "fonts/a.woff2", body: "font"},
+	}
+	g := &github{tag: "v1.0.0", arch: archive(t, files)}
+	srv := g.server(t)
+	s := &Site{Repo: "kronwerke/website", API: srv.URL, Dir: t.TempDir(), UserAgent: "test"}
+	h := s.Handler()
+	if _, _, err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// a browser gets the stylesheet compressed, and it is the same stylesheet
+	rec := ask(t, h, "/css/site.css", "Accept-Encoding", "gzip, deflate, br")
+	if rec.Code != 200 || rec.Header().Get("Content-Encoding") != "gzip" || rec.Header().Get("Vary") != "Accept-Encoding" {
+		t.Fatalf("css for a browser: %d %v", rec.Code, rec.Header())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
+		t.Fatalf("css type: %q", ct)
+	}
+	if rec.Body.Len() >= len(css)/2 || unzip(t, rec.Body.Bytes()) != css {
+		t.Fatalf("css was not compressed well: %d of %d bytes", rec.Body.Len(), len(css))
+	}
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag on the stylesheet")
+	}
+	// asking again with the fingerprint costs no body
+	if rec := ask(t, h, "/css/site.css", "Accept-Encoding", "gzip", "If-None-Match", etag); rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+		t.Fatalf("revalidation: %d with %d bytes", rec.Code, rec.Body.Len())
+	}
+	// a client without gzip gets the plain file, under another fingerprint
+	plain := ask(t, h, "/css/site.css")
+	if plain.Header().Get("Content-Encoding") != "" || plain.Body.String() != css || plain.Header().Get("ETag") == etag || plain.Header().Get("ETag") == "" {
+		t.Fatalf("css without gzip: %v", plain.Header())
+	}
+	if rec := ask(t, h, "/css/site.css", "Accept-Encoding", "gzip;q=0"); rec.Header().Get("Content-Encoding") != "" {
+		t.Fatal("gzip;q=0 means no gzip")
+	}
+	// a part of a file comes from the file as it is
+	if rec := ask(t, h, "/css/site.css", "Accept-Encoding", "gzip", "Range", "bytes=0-3"); rec.Code != http.StatusPartialContent || rec.Body.String() != "body" {
+		t.Fatalf("range: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// pages reached by their short address and by an alias are compressed too
+	for _, p := range []string{"/installieren", "/fragen"} {
+		rec := ask(t, h, p, "Accept-Encoding", "gzip")
+		if rec.Code != 200 || rec.Header().Get("Content-Encoding") != "gzip" || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") || !strings.Contains(unzip(t, rec.Body.Bytes()), "install") {
+			t.Fatalf("%s: %d %v", p, rec.Code, rec.Header())
+		}
+	}
+	// small files and pictures go out as they are, with a fingerprint
+	if rec := ask(t, h, "/", "Accept-Encoding", "gzip"); rec.Code != 200 || rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("ETag") == "" || !strings.Contains(rec.Body.String(), "one") {
+		t.Fatalf("index: %d %v", rec.Code, rec.Header())
+	}
+	pic := ask(t, h, "/img/mobs/fox.png", "Accept-Encoding", "gzip")
+	if pic.Header().Get("Content-Encoding") != "" || pic.Body.String() != png || pic.Header().Get("ETag") == "" {
+		t.Fatalf("picture: %v", pic.Header())
+	}
+
+	// pages say what they may load; pictures and styles do not carry that
+	if rec := ask(t, h, "/installieren"); rec.Header().Get("Content-Security-Policy") != Policy || rec.Header().Get("X-Frame-Options") != "SAMEORIGIN" || rec.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatalf("a page without its policy: %v", rec.Header())
+	}
+	if rec := ask(t, h, "/img/mobs/fox.png"); rec.Header().Get("Content-Security-Policy") != "" {
+		t.Fatal("a picture needs no policy")
+	}
+
+	// how long a browser keeps what
+	for p, want := range map[string]string{
+		"/":                      "public, max-age=300",
+		"/installieren":          "public, max-age=300",
+		"/css/site.css":          "public, max-age=3600",
+		"/css/site.css?v=abc123": "public, max-age=31536000, immutable",
+		"/img/mobs/fox.png":      "public, max-age=86400, stale-while-revalidate=604800",
+		"/img/mobs/fox.png?v=1":  "public, max-age=31536000, immutable",
+		"/fonts/a.woff2":         "public, max-age=2592000",
+	} {
+		if got := ask(t, h, p).Header().Get("Cache-Control"); got != want {
+			t.Errorf("Cache-Control of %s: %q, want %q", p, got, want)
+		}
+	}
+
+	// the next release changes one page: everything else keeps its fingerprint, so
+	// browsers keep what they have
+	files[2].body = page + "faq, new"
+	g.tag, g.arch = "v1.1.0", archive(t, files)
+	if _, changed, err := s.Sync(context.Background()); err != nil || !changed {
+		t.Fatalf("second release: %v %v", changed, err)
+	}
+	if rec := ask(t, h, "/css/site.css", "Accept-Encoding", "gzip", "If-None-Match", etag); rec.Code != http.StatusNotModified {
+		t.Fatalf("an unchanged stylesheet after a release: %d", rec.Code)
+	}
+	if rec := ask(t, h, "/img/mobs/fox.png", "If-None-Match", pic.Header().Get("ETag")); rec.Code != http.StatusNotModified {
+		t.Fatalf("an unchanged picture after a release: %d", rec.Code)
+	}
+	old := ask(t, h, "/fragen", "Accept-Encoding", "gzip")
+	if !strings.Contains(unzip(t, old.Body.Bytes()), "faq, new") {
+		t.Fatal("the changed page is not the new one")
+	}
+
+	// after a restart the catalog is rebuilt from disk
+	again := &Site{Repo: "kronwerke/website", API: srv.URL, Dir: s.Dir, UserAgent: "test"}
+	again.Load()
+	if rec := ask(t, again.Handler(), "/css/site.css", "Accept-Encoding", "gzip", "If-None-Match", etag); rec.Code != http.StatusNotModified {
+		t.Fatalf("after a restart: %d", rec.Code)
+	}
+}

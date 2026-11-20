@@ -74,8 +74,9 @@ func TestCodeSignsTheBrowserInAndShowsTheWhitelistPlace(t *testing.T) {
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("after logout: %d", rec.Code)
+	// signed out is an answer, not an error: 200 with an empty name
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"name":""}` {
+		t.Fatalf("after logout: %d %s", rec.Code, rec.Body)
 	}
 }
 

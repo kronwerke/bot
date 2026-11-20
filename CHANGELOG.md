@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.0
+
+- The website loads faster and stays in the browser (20.11.2026). Until now every file went out uncompressed, and every website release made every browser fetch every file again, because the only thing a browser could compare was the time the bot unpacked the release.
+  - Text (pages, styles, scripts, JSON, SVG) is sent gzip-compressed to every browser that takes it; the bot compresses each file once when it installs a release. The stylesheet goes from 95 KB to 17 KB, the quest book's item list from 376 KB to 77 KB.
+  - Every file carries an `ETag` made from its content. A file a release did not change answers a returning browser with a short 304 instead of the file.
+  - An address with `?v=` (the website's build writes the file's fingerprint there) is kept for a year without asking again. Fonts are kept 30 days, pictures a day and then shown from the cache while the browser checks in the background, styles and scripts without a fingerprint an hour, pages five minutes.
+- Pages come with a Content-Security-Policy (only the site's own scripts run; data from the bot, ttv.kronwerke.com, Discord's widget and GitHub's releases), `X-Frame-Options: SAMEORIGIN`, `Cross-Origin-Opener-Policy: same-origin` and `Strict-Transport-Security` for a year.
+- `GET /api/me` and `GET /api/me/quests` answer 200 with an empty name when nobody is signed in (was 401). Every page asks this for every visitor, and the 401 showed up as an error in the browser's console.
+
 ## 0.11.0
 
 - The website links Discord and Minecraft (20.11.2026). Signed in with a Minecraft account, `GET /api/auth/discord` sends the browser to Discord (scope identify) and back through the whitelist app's callback, the one redirect address the Discord app has; a state that starts with `mclink.` ends in the link. It follows the rules of `/link`: a streamer or Season 1 player comes onto the whitelist with it, everyone else is linked and waits for a place. Moving a streamer's place to another account stays with `/link` in Discord, where the streamer agrees. A Minecraft name linked to one Discord account cannot be taken by another.
