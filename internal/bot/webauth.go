@@ -27,7 +27,7 @@ import (
 const (
 	webCookie      = "__Host-kw_mc"
 	webSessionTTL  = 183 * 24 * time.Hour // about six months, renewed while the browser is in use
-	webSessionsPer = 5 // per account; the oldest goes
+	webSessionsPer = 5                    // per account; the oldest goes
 	codeTTL        = 10 * time.Minute
 	codeAlphabet   = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 )
