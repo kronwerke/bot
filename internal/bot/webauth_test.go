@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kronwerke/bot/internal/discord"
 	"github.com/kronwerke/bot/internal/mcauth"
 	"github.com/kronwerke/bot/internal/store"
 )
@@ -75,5 +76,92 @@ func TestCodeSignsTheBrowserInAndShowsTheWhitelistPlace(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("after logout: %d", rec.Code)
+	}
+}
+
+func TestWebsiteLinksDiscordLikeTheSlashCommand(t *testing.T) {
+	b, d, _, h := newAppBot(t)
+	mux := http.NewServeMux()
+	mux.Handle("/whitelist/", h)
+	b.routesWebAuth(mux)
+
+	code, _ := b.web.newCode(mcauth.Account{UUID: "bf8ccf0d901d4cdd88b66af144428974", Name: "BobMC"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/api/auth/code", strings.NewReader(`{"code":"`+code+`"}`)))
+	mc := rec.Result().Cookies()[0]
+
+	// not signed in: no trip to Discord
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/auth/discord", nil))
+	if rec.Header().Get("Location") != "/anmelden" {
+		t.Fatalf("without a session: %s", rec.Header().Get("Location"))
+	}
+
+	req := httptest.NewRequest("GET", "/api/auth/discord", nil)
+	req.AddCookie(mc)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	loc := rec.Header().Get("Location")
+	if rec.Code != 302 || !strings.Contains(loc, "discord.com/oauth2/authorize") || !strings.Contains(loc, "state=mclink.") {
+		t.Fatalf("start: %d %s", rec.Code, loc)
+	}
+	state := strings.SplitN(strings.SplitN(loc, "state=", 2)[1], "&", 2)[0]
+	stateCookie := rec.Result().Cookies()[0]
+
+	d.mu.Lock()
+	d.who = wlBob
+	d.mu.Unlock()
+	req = httptest.NewRequest("GET", "/whitelist/callback?code=good&state="+state, nil)
+	req.AddCookie(mc)
+	req.AddCookie(stateCookie)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if loc = rec.Header().Get("Location"); !strings.HasPrefix(loc, "/anmelden#discord=Verkn") {
+		t.Fatalf("callback: %s", loc)
+	}
+	if got := b.store.Link(wlBob); got != "BobMC" {
+		t.Fatalf("link: %q", got)
+	}
+
+	req = httptest.NewRequest("GET", "/api/me", nil)
+	req.AddCookie(mc)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var me struct {
+		Discord struct{ ID string } `json:"discord"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &me)
+	if me.Discord.ID != wlBob {
+		t.Fatalf("me: %s", rec.Body)
+	}
+
+	// someone else's Discord account cannot take the name
+	d.mu.Lock()
+	d.who = wlCarl
+	d.mu.Unlock()
+	if msg, ok := b.linkWeb(req.Context(), discord.User{ID: wlCarl}, &discord.Member{User: &discord.User{ID: wlCarl}}, "BobMC"); ok {
+		t.Fatalf("second account linked: %s", msg)
+	}
+}
+
+func TestSessionLastsSixMonthsAndIsRenewedInUse(t *testing.T) {
+	st, _ := store.Open(filepath.Join(t.TempDir(), "state.json"))
+	b := &Bot{store: st, web: newWebAuth(), log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	b.link = b.newHub()
+	mux := http.NewServeMux()
+	b.routesWebAuth(mux)
+	// a session made five months ago, one month left
+	old := time.Now().Add(30 * 24 * time.Hour)
+	st.PutWebSession(tokenHash("tok-of-more-than-twenty-chars"), store.WebSession{UUID: "u", Name: "Ben", Created: time.Now().Add(-150 * 24 * time.Hour), Expires: old}, 5)
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: webCookie, Value: "tok-of-more-than-twenty-chars"})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != 200 || len(rec.Result().Cookies()) != 1 || rec.Result().Cookies()[0].MaxAge < 180*24*3600 {
+		t.Fatalf("renewal: %d %v", rec.Code, rec.Result().Cookies())
+	}
+	s, _ := st.WebSession(tokenHash("tok-of-more-than-twenty-chars"))
+	if time.Until(s.Expires) < 180*24*time.Hour {
+		t.Fatalf("session ends %v", s.Expires)
 	}
 }

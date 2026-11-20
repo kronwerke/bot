@@ -335,6 +335,11 @@ func (b *Bot) appCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: stateCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	// the same Discord sign in links a Minecraft account signed in on the website
+	if strings.HasPrefix(state, linkState) {
+		b.webLinkCallback(w, r)
+		return
+	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Redirect(w, r, appPath+"#fehler=abgebrochen", http.StatusFound)

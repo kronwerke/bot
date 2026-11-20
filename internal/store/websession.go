@@ -59,3 +59,13 @@ func (s *Store) WebSessionCount() (n int) {
 	s.view(func(d *data) { n = len(d.WebSessions) })
 	return n
 }
+
+// TouchWebSession moves a session's end out, so a browser in use stays signed in.
+func (s *Store) TouchWebSession(hash string, expires time.Time) error {
+	return s.update(func(d *data) {
+		if w, ok := d.WebSessions[hash]; ok {
+			w.Expires = expires
+			d.WebSessions[hash] = w
+		}
+	})
+}

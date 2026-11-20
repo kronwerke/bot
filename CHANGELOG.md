@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0
+
+- The website links Discord and Minecraft (20.11.2026). Signed in with a Minecraft account, `GET /api/auth/discord` sends the browser to Discord (scope identify) and back through the whitelist app's callback, the one redirect address the Discord app has; a state that starts with `mclink.` ends in the link. It follows the rules of `/link`: a streamer or Season 1 player comes onto the whitelist with it, everyone else is linked and waits for a place. Moving a streamer's place to another account stays with `/link` in Discord, where the streamer agrees. A Minecraft name linked to one Discord account cannot be taken by another.
+- `GET /api/me` also answers `discord` (id and name) when the account is linked, by `/link` or by a place given on Discord.
+- A sign in on the website lasts six months (was 30 days) and starts over once a day while the browser is in use, so it does not run out for someone who visits.
+
 ## 0.10.0
 
 - Sign in on the website with a Minecraft account (20.11.2026). The bot runs a tiny Minecraft endpoint on TCP 25565 (`internal/mcauth`, address auth.kronwerke.com, setting `auth.addr`, "-" turns it off): the player joins it, the client logs in with Mojang as on any online mode server, the bot checks Mojang's session server (hasJoined) and disconnects the player with a six character code. The code typed on kronwerke.com/anmelden signs the browser in for 30 days (cookie `__Host-kw_mc`, only a hash of its token is kept in the state file, at most five per account). No whitelist place is needed. Clients from 1.20.2 on; older ones get a message.

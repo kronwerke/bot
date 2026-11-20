@@ -26,7 +26,7 @@ import (
 
 const (
 	webCookie      = "__Host-kw_mc"
-	webSessionTTL  = 30 * 24 * time.Hour
+	webSessionTTL  = 183 * 24 * time.Hour // about six months, renewed while the browser is in use
 	webSessionsPer = 5 // per account; the oldest goes
 	codeTTL        = 10 * time.Minute
 	codeAlphabet   = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -180,6 +180,7 @@ func (b *Bot) routesWebAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/logout", b.authLogout)
 	mux.HandleFunc("GET /api/me", b.apiMe)
 	mux.HandleFunc("GET /api/me/quests", b.apiMeQuests)
+	mux.HandleFunc("GET /api/auth/discord", b.webLinkStart)
 }
 
 func (b *Bot) authCode(w http.ResponseWriter, r *http.Request) {
@@ -282,12 +283,26 @@ func (b *Bot) cachedRoster() *rosterView {
 }
 
 func (b *Bot) apiMe(w http.ResponseWriter, r *http.Request) {
-	s, _, ok := b.webUser(r)
+	s, h, ok := b.webUser(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": s.Name, "uuid": s.UUID, "whitelist": b.whitelistOf(s.UUID, s.Name)})
+	// a browser in use stays signed in: once a day the session and its cookie start over
+	if time.Until(s.Expires) < webSessionTTL-24*time.Hour {
+		if c, err := r.Cookie(webCookie); err == nil {
+			exp := time.Now().Add(webSessionTTL)
+			if b.store.TouchWebSession(h, exp) == nil {
+				http.SetCookie(w, &http.Cookie{Name: webCookie, Value: c.Value, Path: "/", MaxAge: int(webSessionTTL.Seconds()),
+					HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+			}
+		}
+	}
+	out := map[string]any{"name": s.Name, "uuid": s.UUID, "whitelist": b.whitelistOf(s.UUID, s.Name)}
+	if id, shown := b.discordOf(s.Name); id != "" {
+		out["discord"] = map[string]string{"id": id, "name": shown}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // apiMeQuests passes on what Core says about the team's quest progress, kept 30 seconds.
