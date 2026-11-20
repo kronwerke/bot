@@ -63,6 +63,7 @@ type Bot struct {
 
 	events eventLog
 	stats  stats
+	web    *webAuth // sign in with a Minecraft account (webauth.go)
 
 	statusMu  sync.Mutex
 	lastPing  pingResult
@@ -106,6 +107,7 @@ func New(cfg Config, log *slog.Logger) (*Bot, error) {
 		cfg: cfg, log: log, store: st, started: time.Now(),
 		rest:    discord.NewREST(cfg.Token, cfg.Version),
 		restart: make(chan string, 1),
+		web:     newWebAuth(),
 	}
 	if cfg.APIBase != "" {
 		b.rest.Base = cfg.APIBase
@@ -138,6 +140,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		go b.siteLoop(ctx)
 	}
 	go b.connect(ctx)
+	go b.authLoop(ctx)
 
 	go b.loop(ctx, "captcha sweep", time.Minute, func(ctx context.Context) { b.store.SweepCaptchas(time.Now()) })
 	go b.loop(ctx, "applications", 30*time.Minute, b.sweepApplications)

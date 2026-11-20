@@ -37,7 +37,7 @@ const AssetGrace = 15 * time.Minute
 
 const (
 	maxArchive = 64 << 20  // compressed
-	maxFiles   = 2000      // files in the archive
+	maxFiles   = 12000     // files in the archive (the quest book alone has about 4 500)
 	maxTotal   = 256 << 20 // unpacked
 )
 

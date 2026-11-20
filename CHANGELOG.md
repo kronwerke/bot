@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- Sign in on the website with a Minecraft account (20.11.2026). The bot runs a tiny Minecraft endpoint on TCP 25565 (`internal/mcauth`, address auth.kronwerke.com, setting `auth.addr`, "-" turns it off): the player joins it, the client logs in with Mojang as on any online mode server, the bot checks Mojang's session server (hasJoined) and disconnects the player with a six character code. The code typed on kronwerke.com/anmelden signs the browser in for 30 days (cookie `__Host-kw_mc`, only a hash of its token is kept in the state file, at most five per account). No whitelist place is needed. Clients from 1.20.2 on; older ones get a message.
+- `GET /api/me`: name, uuid and whether the account is on the whitelist (bot grants and streamer slots, then Core's roster). `GET /api/me/quests`: the quest progress of the account's team, from Core's `kw admin quests <uuid> json` (Core 0.39.40), kept 30 seconds. `POST /api/auth/code`, `POST /api/auth/logout`.
+- The website archive may hold up to 12 000 files (was 2 000); the quest book alone brings about 4 500.
+
 ## 0.9.2
 
 - A new website release whose files CI has not attached yet no longer reports "Website-Update fehlgeschlagen". The bot waits up to 15 minutes for site.tar.gz and SHA256SUMS and tries again on the next round; only after that it counts as an error.

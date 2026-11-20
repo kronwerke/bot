@@ -43,9 +43,10 @@ var defaults = map[string]string{
 	"captcha.attempts":  "3",
 	"captcha.lock":      "10m",
 	"applications.keep": "48h",
-	"verify.autorole":   "on",  // give new members the unverified role on join
-	"s1.slots":          "2",   // own slots for Season 1 players, given with /link
-	"role.grace":        "24h", // how long a place waits for a lost streamer or Season 1 role to come back
+	"verify.autorole":   "on",     // give new members the unverified role on join
+	"s1.slots":          "2",      // own slots for Season 1 players, given with /link
+	"role.grace":        "24h",    // how long a place waits for a lost streamer or Season 1 role to come back
+	"auth.addr":         ":25565", // the Minecraft sign in endpoint (auth.kronwerke.com); "-" turns it off
 }
 
 // setting returns the override from the store or the default.

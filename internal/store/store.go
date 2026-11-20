@@ -88,6 +88,7 @@ type data struct {
 	Names        map[string]string      `json:"names"`                  // discord id -> name shown on Discord, as of the last /link
 	LinkedAt     map[string]time.Time   `json:"linked_at"`              // discord id -> when /link was last used
 	OAuthSecret  string                 `json:"oauth_secret,omitempty"` // the app's OAuth2 client secret when set over the admin API
+	WebSessions  map[string]WebSession  `json:"web_sessions,omitempty"` // token hash -> website sign in with Minecraft
 }
 
 // Store is safe for concurrent use.
@@ -150,6 +151,9 @@ func (s *Store) init() {
 	}
 	if s.d.LinkKeys == nil {
 		s.d.LinkKeys = map[string]LinkKey{}
+	}
+	if s.d.WebSessions == nil {
+		s.d.WebSessions = map[string]WebSession{}
 	}
 }
 

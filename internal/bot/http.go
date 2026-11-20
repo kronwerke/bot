@@ -49,6 +49,7 @@ func (b *Bot) serveHTTP(ctx context.Context) {
 	// the reverse proxy keeps /healthz and /metrics to itself
 	mux.Handle("GET /link", b.link)
 	mux.HandleFunc("GET /api/status", b.apiStatus)
+	b.routesWebAuth(mux)
 	mux.HandleFunc("GET /api/admin/bot", b.adminBot)
 	mux.HandleFunc("POST /api/admin/link", b.adminLink)
 	mux.HandleFunc("POST /api/admin/oauth", b.adminOAuth)
