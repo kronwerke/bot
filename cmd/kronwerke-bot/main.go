@@ -80,6 +80,7 @@ func config() (bot.Config, error) {
 	cfg := bot.Config{
 		Token:         token(os.Getenv("DISCORD_TOKEN")),
 		StatePath:     filepath.Join(stateDir, "state.json"),
+		HeadsDir:      filepath.Join(stateDir, "heads"),
 		HTTPAddr:      env("KW_HTTP_ADDR", "127.0.0.1:13030"),
 		MinecraftAddr: os.Getenv("KW_MC_ADDR"),
 		RCONAddr:      os.Getenv("KW_RCON_ADDR"),

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1
+
+- The face of a Minecraft account (`/whitelist/head/<name>`) is answered at once. The faces were only kept in memory for six hours, so after every restart of the bot, and four times a day, the first visitor waited for three requests to Mojang before the head in the website's header showed. Now a face that was cut once is kept in `state/heads/`, answered from there also after a restart, and fetched again in the background when it is older than six hours. Browsers keep it for a day (was an hour) and then show the old one while they fetch the new one.
+
 ## 0.12.0
 
 - The website loads faster and stays in the browser (20.11.2026). Until now every file went out uncompressed, and every website release made every browser fetch every file again, because the only thing a browser could compare was the time the bot unpacked the release.

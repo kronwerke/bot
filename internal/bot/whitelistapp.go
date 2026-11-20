@@ -78,6 +78,7 @@ func (b *Bot) app() *wlApp {
 			sessions: map[string]*appSession{}, members: map[string]cachedMember{},
 			asked: map[string]time.Time{}, moves: map[string]time.Time{}, heads: newHeads(), oauthAPI: base,
 		}
+		b.wl.heads.dir = b.cfg.HeadsDir
 	})
 	return b.wl
 }
@@ -126,10 +127,12 @@ func (b *Bot) routeApp(mux *http.ServeMux) {
 		name := strings.TrimSuffix(r.PathValue("name"), ".png")
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		png, found := a.heads.face(ctx, name)
+		png, found := a.heads.faceNow(ctx, name)
 		w.Header().Set("Content-Type", "image/png")
 		if found {
-			w.Header().Set("Cache-Control", "public, max-age=3600")
+			// a day in the browser, and a week more in which it shows the old face while
+			// it fetches the new one: a head is on every page of a signed in visitor
+			w.Header().Set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
 		} else {
 			w.Header().Set("Cache-Control", "public, max-age=300")
 		}

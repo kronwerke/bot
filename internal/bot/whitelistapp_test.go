@@ -325,7 +325,7 @@ func TestWhitelistAppServesFacesAndThePage(t *testing.T) {
 	if c := color.NRGBAModel.Convert(img.At(20, 20)).(color.NRGBA); c.R != 200 {
 		t.Fatalf("face pixel: %v", c)
 	}
-	if rec.Header().Get("Cache-Control") != "public, max-age=3600" {
+	if rec.Header().Get("Cache-Control") != "public, max-age=86400, stale-while-revalidate=604800" {
 		t.Fatalf("cache: %q", rec.Header().Get("Cache-Control"))
 	}
 	if rec := get("/whitelist/head/Nobody"); rec.Code != 200 || rec.Header().Get("Cache-Control") != "public, max-age=300" {

@@ -27,6 +27,7 @@ import (
 type Config struct {
 	Token         string
 	StatePath     string
+	HeadsDir      string // where the faces of Minecraft accounts are kept; empty: memory only
 	HTTPAddr      string
 	MinecraftAddr string // host:port for the status ping, optional
 	RCONAddr      string // host:port, optional

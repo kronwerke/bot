@@ -13,6 +13,8 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,15 +23,21 @@ import (
 // heads looks Minecraft accounts up at Mojang and cuts the face out of their skin, for the
 // whitelist app. Discord only loads images through the app's own address, so the faces
 // come from here and not from a head service. Everything is cached: names for six hours,
-// unknown names for ten minutes.
+// unknown names for ten minutes. A face that was cut once is also kept on disk (dir) and
+// answered at once from then on, also after a restart; when it may be out of date it is
+// fetched again in the background, so nobody waits for Mojang a second time.
 type heads struct {
 	profileAPI string // https://api.mojang.com/users/profiles/minecraft/
 	sessionAPI string // https://sessionserver.mojang.com/session/minecraft/profile/
 	textures   string // https://textures.minecraft.net/texture/, the only place skins come from
 	http       *http.Client
 
-	mu      sync.Mutex
-	entries map[string]*headEntry // lower case name
+	dir string // where faces are kept as <lower case name>.png; empty keeps them in memory only
+
+	mu       sync.Mutex
+	entries  map[string]*headEntry // lower case name
+	last     map[string][]byte     // the face served last for a name, however old
+	fetching map[string]bool       // names whose face is being fetched in the background
 }
 
 type headEntry struct {
@@ -55,6 +63,8 @@ func newHeads() *heads {
 		textures:   "https://textures.minecraft.net/texture/",
 		http:       &http.Client{Timeout: 8 * time.Second},
 		entries:    map[string]*headEntry{},
+		last:       map[string][]byte{},
+		fetching:   map[string]bool{},
 	}
 }
 
@@ -149,6 +159,52 @@ func dashed(id string) string {
 	return id[0:8] + "-" + id[8:12] + "-" + id[12:16] + "-" + id[16:20] + "-" + id[20:]
 }
 
+// faceNow is face without the wait: a face that was cut before is answered at once, from
+// memory or from disk. When it is older than the cache allows, Mojang is asked in the
+// background and the next request gets the new one. Only a name seen for the first time
+// waits for Mojang.
+func (h *heads) faceNow(ctx context.Context, name string) ([]byte, bool) {
+	if !mcName.MatchString(name) {
+		return placeholderFace(), false
+	}
+	key := strings.ToLower(name)
+	h.mu.Lock()
+	e := h.entries[key]
+	if e != nil && e.wait == nil && e.found && e.png != nil && time.Since(e.at) < headTTL {
+		p := e.png
+		h.mu.Unlock()
+		return p, true
+	}
+	old := h.last[key]
+	h.mu.Unlock()
+	if old == nil && h.dir != "" {
+		if p, err := os.ReadFile(filepath.Join(h.dir, key+".png")); err == nil && len(p) > 0 {
+			old = p
+			h.mu.Lock()
+			h.last[key] = p
+			h.mu.Unlock()
+		}
+	}
+	if old == nil {
+		return h.face(ctx, name)
+	}
+	h.mu.Lock()
+	busy := h.fetching[key]
+	h.fetching[key] = true
+	h.mu.Unlock()
+	if !busy {
+		go func() {
+			bg, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			h.face(bg, name)
+			h.mu.Lock()
+			delete(h.fetching, key)
+			h.mu.Unlock()
+		}()
+	}
+	return old, true
+}
+
 // face returns the PNG of the account's face, hat layer on top. Accounts without a
 // skin of their own, and failures at Mojang, get the plain face.
 func (h *heads) face(ctx context.Context, name string) ([]byte, bool) {
@@ -171,9 +227,24 @@ func (h *heads) face(ctx context.Context, name string) ([]byte, bool) {
 	if err != nil {
 		return placeholderFace(), true
 	}
+	key := strings.ToLower(name)
 	h.mu.Lock()
 	e.png = p
+	if len(h.last) >= headCacheMax {
+		h.last = map[string][]byte{}
+	}
+	changed := !bytes.Equal(h.last[key], p)
+	h.last[key] = p
 	h.mu.Unlock()
+	if changed && h.dir != "" {
+		// through a temporary file, so a reader never sees half a picture
+		if err := os.MkdirAll(h.dir, 0o755); err == nil {
+			tmp := filepath.Join(h.dir, key+".tmp")
+			if os.WriteFile(tmp, p, 0o644) == nil {
+				os.Rename(tmp, filepath.Join(h.dir, key+".png"))
+			}
+		}
+	}
 	return p, true
 }
 
