@@ -97,6 +97,11 @@ func (b *Bot) apiStatus(w http.ResponseWriter, r *http.Request) {
 			server["pack"] = *p
 		}
 	}
+	// the version the install page offers, also while the server is down
+	pack, _ := server["pack"].(string)
+	if v := b.packDownload(pack); v != "" {
+		server["download"] = v
+	}
 	out := map[string]any{"server": server}
 	if season != nil {
 		out["season"] = season

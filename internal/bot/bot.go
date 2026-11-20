@@ -39,6 +39,8 @@ type Config struct {
 	CurseForgeKey string          // CurseForge API key for the proxy; empty turns it off
 	ClientSecret  string          // OAuth2 client secret of the app, for the whitelist app; empty turns sign in off
 	PublicURL     string          // where the website is reachable, https://kronwerke.com
+	PackRepo      string          // owner/name of the pack, for the install page's download version; empty turns it off
+	PackAPI       string          // https://api.github.com
 }
 
 // ErrRestart asks main to exit so systemd starts the (new) binary.
@@ -80,6 +82,7 @@ type Bot struct {
 	siteErr string // the last website sync error, reported once
 
 	packNow atomic.Pointer[string] // the pack version the launcher reported last
+	packs   packList               // the pack releases that can be downloaded
 
 	appOnce sync.Once
 	wl      *wlApp // the whitelist app, see whitelistapp.go
@@ -147,6 +150,13 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.loop(ctx, "privacy", time.Hour, b.sweepPrivacy)
 	go b.loop(ctx, "server status", b.duration("status.interval", time.Minute), b.refreshStatus)
 	go b.loop(ctx, "reconcile", time.Hour, b.reconcileNow)
+	if b.cfg.PackRepo != "" {
+		go func() {
+			defer b.recover("pack releases")
+			b.refreshPack(ctx)
+		}()
+		go b.loop(ctx, "pack releases", 10*time.Minute, b.refreshPack)
+	}
 
 	select {
 	case <-ctx.Done():

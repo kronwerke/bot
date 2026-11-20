@@ -7,6 +7,7 @@
   - Every file carries an `ETag` made from its content. A file a release did not change answers a returning browser with a short 304 instead of the file.
   - An address with `?v=` (the website's build writes the file's fingerprint there) is kept for a year without asking again. Fonts are kept 30 days, pictures a day and then shown from the cache while the browser checks in the background, styles and scripts without a fingerprint an hour, pages five minutes.
 - Pages come with a Content-Security-Policy (only the site's own scripts run; data from the bot, ttv.kronwerke.com, Discord's widget and GitHub's releases), `X-Frame-Options: SAMEORIGIN`, `Cross-Origin-Opener-Policy: same-origin` and `Strict-Transport-Security` for a year.
+- `GET /api/status` says in `server.download` which pack version the install page should offer: the one the server runs when its release has both files, else the newest release that has them. The bot reads the pack's releases every ten minutes (`KW_PACK_REPO`, default `kronwerke/pack`). Before, every visitor's browser asked GitHub, which answers 60 questions an hour per address and then with an error.
 - `GET /api/me` and `GET /api/me/quests` answer 200 with an empty name when nobody is signed in (was 401). Every page asks this for every visitor, and the 401 showed up as an error in the browser's console.
 
 ## 0.11.0

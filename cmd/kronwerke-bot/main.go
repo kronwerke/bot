@@ -90,6 +90,10 @@ func config() (bot.Config, error) {
 		CurseForgeKey: strings.TrimSpace(os.Getenv("KW_CURSEFORGE_KEY")),
 		ClientSecret:  strings.TrimSpace(os.Getenv("KW_DISCORD_CLIENT_SECRET")),
 		PublicURL:     env("KW_PUBLIC_URL", "https://kronwerke.com"),
+		PackAPI:       env("KW_UPDATE_API", "https://api.github.com"),
+	}
+	if repo := env("KW_PACK_REPO", "kronwerke/pack"); repo != "off" {
+		cfg.PackRepo = repo
 	}
 	if repo := env("KW_SITE_REPO", "kronwerke/website"); repo != "off" {
 		cfg.Site = &site.Site{

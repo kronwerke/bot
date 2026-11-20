@@ -120,6 +120,8 @@ and restart the bot. `!status` shows the Minecraft line, `!rcon list` answers.
 
 The bot serves the latest release of `kronwerke/website` on `/`. A new tag there is live within `update.interval`, or at once with `!site`. `KW_SITE_REPO=off` turns it off.
 
+The install page links to a pack version. Which one, the bot works out from the releases of `KW_PACK_REPO` (default `kronwerke/pack`, read every ten minutes) and says in `/api/status` as `server.download`: the version the server runs when that release has its `.mrpack` and `.zip`, else the newest release that has both.
+
 `KW_CURSEFORGE_KEY` in `bot.env` turns on the CurseForge proxy for the launcher's console (`/api/curseforge/...`); the key stays on this machine.
 
 `KW_ADMIN_TOKEN` in `bot.env` turns on `/api/admin/...` (see the README). Generate it with `openssl rand -hex 32`, keep it in the vault, and restart the bot. Without it the paths do not exist.

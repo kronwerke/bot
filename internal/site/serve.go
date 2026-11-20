@@ -134,7 +134,7 @@ func lifetime(r *http.Request, name string) string {
 
 // Policy is what a page of the site may load and where it may be shown: its own files,
 // pictures from anywhere over https (stream previews, avatars), and data from the three
-// services its scripts ask. No script inside a page's markup runs, so text that ends up
+// services its scripts ask (GitHub only as long as an old page is in a browser's cache). No script inside a page's markup runs, so text that ends up
 // in a page by mistake cannot act for the visitor. Styles on tags stay allowed: the scenes
 // set their sizes there.
 const Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
