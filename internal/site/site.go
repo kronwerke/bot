@@ -109,6 +109,26 @@ func (s *Site) Tag() string {
 	return s.tag
 }
 
+// Read returns a file of the version being served, up to limit bytes. The path is the
+// one a browser asks for, like img/brand/icon-512.png.
+func (s *Site) Read(p string, limit int64) ([]byte, error) {
+	s.mu.RLock()
+	root := s.root
+	s.mu.RUnlock()
+	if root == "" {
+		return nil, errors.New("no website installed yet")
+	}
+	name := filepath.Join(root, filepath.FromSlash(path.Clean("/"+p)))
+	st, err := os.Stat(name)
+	if err != nil || st.IsDir() {
+		return nil, fmt.Errorf("%s is not a file of the website", p)
+	}
+	if st.Size() > limit {
+		return nil, fmt.Errorf("%s has %d bytes, more than %d", p, st.Size(), limit)
+	}
+	return os.ReadFile(name)
+}
+
 // Sync installs the latest release when it is not the one being served. It returns the
 // tag served afterwards and whether it changed.
 func (s *Site) Sync(ctx context.Context) (string, bool, error) {

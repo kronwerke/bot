@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.0
+
+- The server's icon and the bot's own picture come from the website (24.11.2026). `POST /api/admin/brand` with `{"icon": "img/brand/icon-512.png", "avatar": "img/brand/icon-512.png"}` reads the named picture from the website version the bot serves and hands it to Discord; either field may be left out. A new logo is released with the website and set with one call, and no picture travels through the admin API. Only PNG, JPEG and GIF files of the website up to 2 MB are taken.
+- The whitelist app shows the logo's lettering in its header and has the crown as its page icon.
+
 ## 0.12.1
 
 - The face of a Minecraft account (`/whitelist/head/<name>`) is answered at once. The faces were only kept in memory for six hours, so after every restart of the bot, and four times a day, the first visitor waited for three requests to Mojang before the head in the website's header showed. Now a face that was cut once is kept in `state/heads/`, answered from there also after a restart, and fetched again in the background when it is older than six hours. Browsers keep it for a day (was an hour) and then show the old one while they fetch the new one.

@@ -268,6 +268,16 @@ func (r *REST) Messages(ctx context.Context, channelID string, limit int) ([]Mes
 	return out, err
 }
 
+// SetGuildIcon replaces the server's icon. image is a data URI (data:image/png;base64,...).
+func (r *REST) SetGuildIcon(ctx context.Context, guildID, image, reason string) error {
+	return r.Do(ctx, http.MethodPatch, "/guilds/"+guildID, map[string]string{"icon": image}, nil, reason)
+}
+
+// SetAvatar replaces the bot's own picture. Discord allows this a few times an hour.
+func (r *REST) SetAvatar(ctx context.Context, image string) error {
+	return r.Do(ctx, http.MethodPatch, "/users/@me", map[string]string{"avatar": image}, nil, "")
+}
+
 func (r *REST) AddRole(ctx context.Context, guildID, userID, roleID, reason string) error {
 	return r.Do(ctx, http.MethodPut, "/guilds/"+guildID+"/members/"+userID+"/roles/"+roleID, nil, nil, reason)
 }

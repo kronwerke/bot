@@ -66,11 +66,7 @@ body {
   padding: 4px 2px 6px;
 }
 .brand { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; }
-.mark {
-  width: 10px; height: 10px; transform: rotate(45deg);
-  background: var(--gold); box-shadow: 0 0 12px rgba(229, 180, 81, 0.6);
-}
-.brand-name { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); }
+.wordmark { display: block; height: 22px; width: auto; }
 h1 { margin: 0; font-size: 28px; line-height: 1.1; font-weight: 800; letter-spacing: -0.01em; }
 .who { color: var(--mute); font-size: 13px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
 .who button { margin-left: 6px; }
